@@ -1,4 +1,4 @@
-package margocmd
+package margo
 
 import (
 	"disposa.blue/margo/mgcli"

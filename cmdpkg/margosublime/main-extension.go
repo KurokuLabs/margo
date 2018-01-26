@@ -1,6 +1,6 @@
 // +build margo_extension
 
-package main
+package margosublime
 
 import (
 	"margo"

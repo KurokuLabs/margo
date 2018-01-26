@@ -1,9 +1,9 @@
 package main
 
 import (
-	"disposa.blue/margo/margocmd"
+	"disposa.blue/margo/cmdpkg/margo"
 )
 
 func main() {
-	margocmd.Main()
+	margo.Main()
 }

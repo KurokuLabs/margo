@@ -54,7 +54,7 @@ func mainAction(c *cli.Context) error {
 	if extensionPkgExists() {
 		tags = []string{"margo margo_extension", "margo"}
 	}
-	if err := goInstallAgent(os.Getenv("MARGO_GS_GOPATH"), tags); err != nil {
+	if err := goInstallAgent(os.Getenv("MARGO_SUBLIME_GOPATH"), tags); err != nil {
 		return fmt.Errorf("cannot install margo.sublime: %s", err)
 	}
 	return cmdHelper{name: "margo.sublime", args: args}.run()
@@ -73,11 +73,16 @@ func goInstallAgent(gp string, tags []string) error {
 		env = append(env, "GOPATH="+gp)
 	}
 
+	cmdpath := "disposa.blue/margo/cmd/margo.sublime"
+	if s := os.Getenv("MARGO_SUBLIME_CMDPATH"); s != "" {
+		cmdpath = s
+	}
+
 	var err error
 	for _, tag := range tags {
 		err = cmdHelper{
 			name:     "go",
-			args:     []string{"install", "-v", "-tags", tag, "disposa.blue/margo/cmd/margo.sublime"},
+			args:     []string{"install", "-v", "-tags", tag, cmdpath},
 			outToErr: true,
 			env:      env,
 		}.run()
