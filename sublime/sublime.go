@@ -17,6 +17,7 @@ var (
 		Usage:           "",
 		Description:     "",
 		SkipFlagParsing: true,
+		SkipArgReorder:  true,
 		Action:          mgcli.Action(mainAction),
 	}
 )
@@ -49,7 +50,7 @@ func (c cmdHelper) run() error {
 }
 
 func mainAction(c *cli.Context) error {
-	args := c.Args()[2:]
+	args := c.Args()
 	tags := []string{"margo"}
 	if extensionPkgExists() {
 		tags = []string{"margo margo_extension", "margo"}
