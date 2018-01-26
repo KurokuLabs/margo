@@ -1,3 +1,7 @@
+[![Build Status](https://travis-ci.org/disposablue/margo.svg?branch=master)](https://travis-ci.org/disposablue/margo)
+
+<hr>
+
 # MarGo
 
 This project is the next step in the evolution of https://github.com/DisposaBoy/GoSublime...
