@@ -13,9 +13,15 @@
   revision = "cfb38830724cc34fedffe9a2a29fb54fa9169cd1"
   version = "v1.20.0"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/crypto"
+  packages = ["blake2b"]
+  revision = "1875d0a70c90e57f11972aefd42276df65e895b9"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f71b8bb54400480d5ee0962032b2fa670201341e56f26ad928de438cd194f2e1"
+  inputs-digest = "89667bc843b6ed31b4bf3ca29bdf42ad31872ce381247877c0ba28cd4c19c32b"
   solver-name = "gps-cdcl"
   solver-version = 1
