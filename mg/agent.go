@@ -96,55 +96,13 @@ func (ag *Agent) Run() error {
 	return ag.communicate()
 }
 
-func (ag *Agent) sync(req AgentReq) {
-	ag.syncState(req)
-	ag.syncAction(req)
-}
-
-func (ag *Agent) syncState(req AgentReq) {
-	sto := ag.Store
-	sto.mu.Lock()
-	defer sto.mu.Unlock()
-
-	st := sto.state
-	st.View = req.Props.View
-	sto.state = st
-}
-
-func (ag *Agent) syncAction(req AgentReq) {
-	name := req.Action.Name
-	data := req.Action.Data
-	act := ag.createAction(name)
-
-	res := AgentRes{
-		Cookie: req.Cookie,
-	}
-	res.State.State = ag.Store.State()
-	defer func() { ag.send(res) }()
-
-	if act == nil {
-		res.Error = fmt.Sprintf("unknown client action: %s", name)
-		return
-	}
-
-	if len(data) != 0 {
-		err := codec.NewDecoderBytes(data, ag.handle).Decode(act)
-		if err != nil {
-			res.Error = fmt.Sprintf("cannot decode client action: %s: %s", name, err)
-			return
-		}
-	}
-
-	res.State.State = ag.Store.dispatch(act, false)
-}
-
 func (ag *Agent) communicate() error {
 	ag.Println("ready")
 	ag.Store.Dispatch(Started{})
 
 	for {
-		req := AgentReq{}
-		if err := ag.dec.Decode(&req); err != nil {
+		rq := AgentReq{}
+		if err := ag.dec.Decode(&rq); err != nil {
 			if err == io.EOF {
 				return nil
 			}
@@ -152,9 +110,10 @@ func (ag *Agent) communicate() error {
 		}
 
 		// TODO: put this on a channel in the future.
-		// faster, later, requests can finish before slower ones
+		// at the moment we lock the store and block new requests to maintain request/response order
+		// but decoding time could become a problem if we start sending large requests from the client
 		// we currently only have 1 client (GoSublime) that we also control so it's ok for now...
-		ag.sync(req)
+		ag.Store.syncRq(ag, rq)
 	}
 	return nil
 }
@@ -200,6 +159,9 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		handle: codecHandles[cfg.Codec],
 	}
 	ag.Store = newStore(ag.listener).Use(DefaultReducers...)
+	if e := os.Getenv("MARGO_SUBLIME_INSTALL_FAILED"); e != "" {
+		ag.Store.Use(func(st State, _ Action) State { return st.AddStatus(e) })
+	}
 
 	if ag.handle == nil {
 		return ag, fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)

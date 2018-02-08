@@ -1,13 +1,13 @@
 package mg
 
 import (
-	"path/filepath"
 	"bytes"
 	"encoding/base64"
 	"golang.org/x/crypto/blake2b"
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 )
 
 type View struct {
@@ -39,7 +39,7 @@ func (v View) LangIs(names ...string) bool {
 }
 
 func (v View) Filename() string {
-	if v.Path !=""{
+	if v.Path != "" {
 		return v.Path
 	}
 	return filepath.Join(v.Dir, v.Name)

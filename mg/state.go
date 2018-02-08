@@ -19,12 +19,19 @@ type EphemeralState struct {
 	Errors      StrSet
 	Completions []Completion
 	Tooltips    []Tooltip
+	Env         EnvMap
+	Editor      EditorProps
 }
 
 type State struct {
 	EphemeralState
+
 	View     View
 	Obsolete bool
+}
+
+func (s State) AddStatusf(format string, a ...interface{}) State {
+	return s.AddStatus(fmt.Sprintf(format, a...))
 }
 
 func (s State) AddStatus(l ...string) State {
@@ -69,4 +76,11 @@ type clientProps struct {
 	Editor EditorProps
 	Env    EnvMap
 	View   View
+}
+
+func (c *clientProps) updateState(st State) State {
+	st.Editor = c.Editor
+	st.View = c.View
+	st.Env = c.Env
+	return st
 }

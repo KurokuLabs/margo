@@ -1,6 +1,7 @@
 package mg
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -17,53 +18,69 @@ type Store struct {
 	cfg       func() EditorConfig
 }
 
-func (s *Store) Dispatch(act Action) {
-	go s.dispatch(act, true)
+func (sto *Store) Dispatch(act Action) {
+	go sto.dispatch(act)
 }
 
-func (s *Store) dispatch(act Action, callListener bool) State {
-	state := s.prepState()
+func (sto *Store) dispatch(act Action) {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
 
-	s.mu.Lock()
-	reducers := s.reducers
-	s.mu.Unlock()
-
-	for _, r := range reducers {
-		state = r(state, act)
-	}
-
-	s.mu.Lock()
-	listener := s.listener
-	listeners := s.listeners
-	s.state = state
-	s.mu.Unlock()
-
-	if callListener && listener != nil {
-		listener(state)
-	}
-
-	for _, p := range listeners {
-		p.Listener(state)
-	}
-
-	return state
+	sto.reduce(act, true, sto.prepState(sto.state))
 }
 
-func (s *Store) State() State {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (sto *Store) syncRq(ag *Agent, rq AgentReq) {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
 
-	return s.state
+	initSt := sto.state
+	name := rq.Action.Name
+	act := ag.createAction(name)
+
+	rs := AgentRes{Cookie: rq.Cookie}
+	rs.State.State = initSt
+	defer func() { ag.send(rs) }()
+
+	if act == nil {
+		rs.Error = fmt.Sprintf("unknown client action: %s", name)
+		return
+	}
+
+	// TODO: add support for unpacking Action.Data
+
+	st := rq.Props.updateState(sto.prepState(initSt))
+	rs.State.State = sto.reduce(act, false, st)
 }
 
-func (s *Store) prepState() State {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (sto *Store) reduce(act Action, callListener bool, st State) State {
+	for _, r := range sto.reducers {
+		st = r(st, act)
+	}
 
-	st := s.state
+	if callListener && sto.listener != nil {
+		sto.listener(st)
+	}
+
+	for _, p := range sto.listeners {
+		p.Listener(st)
+	}
+
+	sto.state = st
+
+	return st
+}
+
+func (sto *Store) State() State {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
+
+	return sto.state
+}
+
+func (sto *Store) prepState(st State) State {
 	st.EphemeralState = EphemeralState{}
-	if s.cfg != nil {
-		st.Config = s.cfg()
+	if sto.cfg != nil {
+		st.Config = sto.cfg()
 	}
 	return st
 }
@@ -72,39 +89,39 @@ func newStore(l Listener) *Store {
 	return &Store{listener: l}
 }
 
-func (s *Store) Subscribe(l Listener) (unsubscribe func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (sto *Store) Subscribe(l Listener) (unsubscribe func()) {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
 
 	p := &struct{ Listener }{l}
-	s.listeners = append(s.listeners[:len(s.listeners):len(s.listeners)], p)
+	sto.listeners = append(sto.listeners[:len(sto.listeners):len(sto.listeners)], p)
 
 	return func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
+		sto.mu.Lock()
+		defer sto.mu.Unlock()
 
-		listeners := make([]*struct{ Listener }, 0, len(s.listeners)-1)
-		for _, q := range s.listeners {
+		listeners := make([]*struct{ Listener }, 0, len(sto.listeners)-1)
+		for _, q := range sto.listeners {
 			if p != q {
 				listeners = append(listeners, q)
 			}
 		}
-		s.listeners = listeners
+		sto.listeners = listeners
 	}
 }
 
-func (s *Store) Use(reducers ...Reducer) *Store {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (sto *Store) Use(reducers ...Reducer) *Store {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
 
-	s.reducers = append(s.reducers[:len(s.reducers):len(s.reducers)], reducers...)
-	return s
+	sto.reducers = append(sto.reducers[:len(sto.reducers):len(sto.reducers)], reducers...)
+	return sto
 }
 
-func (s *Store) EditorConfig(f func() EditorConfig) *Store {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (sto *Store) EditorConfig(f func() EditorConfig) *Store {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
 
-	s.cfg = f
-	return s
+	sto.cfg = f
+	return sto
 }
