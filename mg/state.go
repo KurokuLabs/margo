@@ -2,6 +2,7 @@ package mg
 
 import (
 	"fmt"
+	"log"
 )
 
 type Ctx struct {
@@ -11,6 +12,9 @@ type Ctx struct {
 	Editor EditorProps
 	Env    EnvMap
 	Store  *Store
+
+	Log *log.Logger
+	Dbg *log.Logger
 }
 
 func newCtx(st *State, act Action, sto *Store) *Ctx {
@@ -23,7 +27,11 @@ func newCtx(st *State, act Action, sto *Store) *Ctx {
 	return &Ctx{
 		State:  st,
 		Action: act,
-		Store:  sto,
+
+		Store: sto,
+
+		Log: Log,
+		Dbg: Dbg,
 	}
 }
 
