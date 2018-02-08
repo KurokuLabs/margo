@@ -7,5 +7,5 @@ import (
 
 var (
 	Log = log.New(os.Stderr, "", log.Lshortfile)
-	Dbg = log.New(os.Stderr, "DBG", log.Lshortfile)
+	Dbg = log.New(os.Stderr, "DBG: ", log.Lshortfile)
 )

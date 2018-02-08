@@ -5,13 +5,11 @@ import (
 	"sync"
 )
 
-type Reducer func(State, Action) State
-
-type Listener func(State)
+type Listener func(*State)
 
 type Store struct {
 	mu        sync.Mutex
-	state     State
+	state     *State
 	listeners []*struct{ Listener }
 	listener  Listener
 	reducers  []Reducer
@@ -26,58 +24,61 @@ func (sto *Store) dispatch(act Action) {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
-	sto.reduce(act, true, sto.prepState(sto.state))
+	sto.reduce(newCtx(sto.prepState(sto.state), act, sto), true)
 }
 
-func (sto *Store) syncRq(ag *Agent, rq AgentReq) {
+func (sto *Store) syncRq(ag *Agent, rq *agentReq) {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
-	initSt := sto.state
 	name := rq.Action.Name
-	act := ag.createAction(name)
+	mx := newCtx(sto.state, ag.createAction(name), sto)
 
-	rs := AgentRes{Cookie: rq.Cookie}
-	rs.State.State = initSt
+	rs := agentRes{Cookie: rq.Cookie}
+	rs.State = mx.State
 	defer func() { ag.send(rs) }()
 
-	if act == nil {
+	if mx.Action == nil {
 		rs.Error = fmt.Sprintf("unknown client action: %s", name)
 		return
 	}
 
 	// TODO: add support for unpacking Action.Data
 
-	st := rq.Props.updateState(sto.prepState(initSt))
-	rs.State.State = sto.reduce(act, false, st)
+	mx = rq.Props.updateCtx(mx)
+	mx.State = sto.prepState(mx.State)
+	rs.State = sto.reduce(mx, false)
 }
 
-func (sto *Store) reduce(act Action, callListener bool, st State) State {
+func (sto *Store) reduce(mx *Ctx, callListener bool) *State {
 	for _, r := range sto.reducers {
-		st = r(st, act)
+		mx = mx.Copy(func(mx *Ctx) {
+			mx.State = r.Reduce(mx)
+		})
 	}
 
 	if callListener && sto.listener != nil {
-		sto.listener(st)
+		sto.listener(mx.State)
 	}
 
 	for _, p := range sto.listeners {
-		p.Listener(st)
+		p.Listener(mx.State)
 	}
 
-	sto.state = st
+	sto.state = mx.State
 
-	return st
+	return mx.State
 }
 
-func (sto *Store) State() State {
+func (sto *Store) State() *State {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
 	return sto.state
 }
 
-func (sto *Store) prepState(st State) State {
+func (sto *Store) prepState(st *State) *State {
+	st = st.Copy()
 	st.EphemeralState = EphemeralState{}
 	if sto.cfg != nil {
 		st.Config = sto.cfg()
@@ -86,7 +87,7 @@ func (sto *Store) prepState(st State) State {
 }
 
 func newStore(l Listener) *Store {
-	return &Store{listener: l}
+	return &Store{listener: l, state: NewState()}
 }
 
 func (sto *Store) Subscribe(l Listener) (unsubscribe func()) {

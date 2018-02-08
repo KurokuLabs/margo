@@ -57,22 +57,48 @@ type AgentConfig struct {
 	Codec string
 }
 
-type AgentReq struct {
+type agentReq struct {
 	Cookie string
 	Action struct {
 		Name string
-		Data codec.Raw
 	}
 	Props clientProps
 }
 
-type AgentRes struct {
+func newAgentReq() *agentReq {
+	return &agentReq{Props: makeClientProps()}
+}
+
+type agentRes struct {
 	Cookie string
 	Error  string
-	State  struct {
-		State
-		Config interface{}
+	State  *State
+}
+
+func (rs agentRes) finalize() interface{} {
+	v := struct {
+		agentRes
+		State struct {
+			State
+			Config interface{}
+		}
+	}{}
+	v.agentRes = rs
+	v.State.State = *rs.State
+
+	if v.Error == "" {
+		v.Error = strings.Join([]string(v.State.Errors), "\n")
 	}
+
+	if v.State.View.changed == 0 {
+		v.State.View = nil
+	}
+
+	if ec := rs.State.Config; ec != nil {
+		v.State.Config = ec.EditorConfig()
+	}
+
+	return v
 }
 
 type Agent struct {
@@ -101,8 +127,8 @@ func (ag *Agent) communicate() error {
 	ag.Store.Dispatch(Started{})
 
 	for {
-		rq := AgentReq{}
-		if err := ag.dec.Decode(&rq); err != nil {
+		rq := newAgentReq()
+		if err := ag.dec.Decode(rq); err != nil {
 			if err == io.EOF {
 				return nil
 			}
@@ -125,29 +151,15 @@ func (ag *Agent) createAction(name string) Action {
 	return nil
 }
 
-func (ag *Agent) listener(st State) {
-	res := AgentRes{}
-	res.State.State = st
-	ag.send(res)
+func (ag *Agent) listener(st *State) {
+	ag.send(agentRes{State: st})
 }
 
-func (ag *Agent) send(res AgentRes) error {
+func (ag *Agent) send(res agentRes) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 
-	if res.Error == "" {
-		res.Error = strings.Join([]string(res.State.Errors), "\n")
-	}
-
-	if res.State.View.changed == 0 {
-		res.State.View = View{}
-	}
-
-	if ec := res.State.State.Config; ec != nil {
-		res.State.Config = ec.EditorConfig()
-	}
-
-	return ag.enc.Encode(res)
+	return ag.enc.Encode(res.finalize())
 }
 
 func NewAgent(cfg AgentConfig) (*Agent, error) {
@@ -160,7 +172,9 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	}
 	ag.Store = newStore(ag.listener).Use(DefaultReducers...)
 	if e := os.Getenv("MARGO_SUBLIME_INSTALL_FAILED"); e != "" {
-		ag.Store.Use(func(st State, _ Action) State { return st.AddStatus(e) })
+		ag.Store.Use(Reduce(func(mx *Ctx) *State {
+			return mx.AddStatus(e)
+		}))
 	}
 
 	if ag.handle == nil {
