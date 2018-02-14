@@ -68,6 +68,7 @@ type EphemeralState struct {
 	Errors      StrSet
 	Completions []Completion
 	Tooltips    []Tooltip
+	Issues      IssueSet
 }
 
 type State struct {
@@ -141,6 +142,15 @@ func (st *State) AddCompletions(l ...Completion) *State {
 func (st *State) AddTooltips(l ...Tooltip) *State {
 	return st.Copy(func(st *State) {
 		st.Tooltips = append(st.Tooltips[:len(st.Tooltips):len(st.Tooltips)], l...)
+	})
+}
+
+func (st *State) AddIssues(l ...Issue) *State {
+	if len(l) == 0 {
+		return st
+	}
+	return st.Copy(func(st *State) {
+		st.Issues = st.Issues.Add(l...)
 	})
 }
 
