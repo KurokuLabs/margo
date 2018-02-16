@@ -183,6 +183,10 @@ func (c *clientProps) updateCtx(mx *Ctx) *Ctx {
 			mx.State = mx.State.Copy(func(st *State) {
 				st.View = c.View
 			})
+			// TODO: convert View.Pos to bytes
+			// at moment gocode is most affected,
+			// but to fix it here means we have to read the file off-disk
+			// so I'd rather not do that until we have some caching in place
 		}
 	})
 }
