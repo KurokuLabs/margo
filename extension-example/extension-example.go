@@ -18,6 +18,17 @@ func Margo(mx mg.Ctx) {
 			golang.GoFmt,
 			// or
 			// golang.GoImports,
+
+			// use gocode for autocompletion
+			&golang.Gocode{
+				// automatically install missing packages
+				Autobuild: true,
+				// autocompete packages that are not yet imported
+				// this goes well with GoImports
+				UnimportedPackages: true,
+				// show the function parameters. this can take up a lot of space
+				ShowFuncParams: true,
+			},
 		)
 }
 
