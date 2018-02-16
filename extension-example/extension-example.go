@@ -29,6 +29,9 @@ func Margo(mx mg.Ctx) {
 				// show the function parameters. this can take up a lot of space
 				ShowFuncParams: true,
 			},
+
+			// check the file for syntax errors
+			&golang.SyntaxCheck{},
 		)
 }
 
