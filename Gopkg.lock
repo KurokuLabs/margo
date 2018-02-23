@@ -17,7 +17,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["blake2b"]
-  revision = "1875d0a70c90e57f11972aefd42276df65e895b9"
+  revision = "49796115aa4b964c318aad4f3084fdb41e9aa067"
 
 [[projects]]
   branch = "master"
@@ -26,7 +26,7 @@
     "go/ast/astutil",
     "imports"
   ]
-  revision = "25101aadb97aa42907eee6a238d6d26a6cb3c756"
+  revision = "86e0f6745d8a45a468e22d7c226fa789fdde1d3e"
 
 [solve-meta]
   analyzer-name = "dep"
