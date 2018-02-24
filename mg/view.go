@@ -13,7 +13,7 @@ import (
 
 type View struct {
 	Path  string
-	Dir   string
+	Wd    string
 	Name  string
 	Hash  string
 	Src   []byte
@@ -51,11 +51,18 @@ func (v *View) LangIs(names ...string) bool {
 	return false
 }
 
+func (v *View) Dir() string {
+	if v.Path != "" {
+		return filepath.Dir(v.Path)
+	}
+	return v.Wd
+}
+
 func (v *View) Filename() string {
 	if v.Path != "" {
 		return v.Path
 	}
-	return filepath.Join(v.Dir, v.Name)
+	return filepath.Join(v.Wd, v.Name)
 }
 
 func (v *View) ReadAll() ([]byte, error) {
