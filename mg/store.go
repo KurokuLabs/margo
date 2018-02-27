@@ -5,6 +5,10 @@ import (
 	"sync"
 )
 
+var _ Dispatcher = (&Store{}).Dispatch
+
+type Dispatcher func(Action)
+
 type Listener func(*State)
 
 type Store struct {
