@@ -11,7 +11,6 @@ type Ctx struct {
 	Action Action
 
 	Editor EditorProps
-	Env    EnvMap
 	Store  *Store
 
 	Log *log.Logger
@@ -89,6 +88,7 @@ type EphemeralState struct {
 type State struct {
 	EphemeralState
 	View     *View
+	Env      EnvMap
 	Obsolete bool
 }
 
