@@ -105,14 +105,18 @@ func (is IssueSet) AllInView(v *View) IssueSet {
 type issueSupport struct{}
 
 func (_ issueSupport) Reduce(mx *Ctx) *State {
+	if len(mx.Issues) == 0 {
+		return mx.State
+	}
+
 	status := make([]string, 0, 3)
 	status = append(status, "placeholder")
-	cnt := 0
+	inview := 0
 	for _, isu := range mx.Issues {
 		if !isu.InView(mx.View) {
 			continue
 		}
-		cnt++
+		inview++
 		if len(status) > 1 || isu.Message == "" || isu.Row != mx.View.Row {
 			continue
 		}
@@ -121,14 +125,7 @@ func (_ issueSupport) Reduce(mx *Ctx) *State {
 		}
 		status = append(status, isu.Message)
 	}
-	switch cnt {
-	case 0:
-		status = nil
-	case len(mx.Issues):
-		status[0] = fmt.Sprintf("Issues (%d)", cnt)
-	default:
-		status[0] = fmt.Sprintf("Issues (%d/%d)", cnt, len(mx.Issues))
-	}
+	status[0] = fmt.Sprintf("Issues (%d/%d)", inview, len(mx.Issues))
 	return mx.AddStatus(status...)
 }
 
