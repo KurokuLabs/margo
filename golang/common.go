@@ -8,9 +8,16 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+)
+
+var (
+	CommonPatterns = append(mg.CommonPatterns[:len(mg.CommonPatterns):len(mg.CommonPatterns)],
+		regexp.MustCompile(`(?P<message>can't load package: package .+: found packages .+ \((?P<path>.+?\.go)\).+)`),
+	)
 )
 
 func BuildContext(e mg.EnvMap) *build.Context {
