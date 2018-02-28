@@ -17,7 +17,7 @@ type Ctx struct {
 	Dbg *log.Logger
 }
 
-func newCtx(st *State, act Action, sto *Store) *Ctx {
+func newCtx(ag *Agent, st *State, act Action, sto *Store) *Ctx {
 	if st == nil {
 		panic("newCtx: state must not be nil")
 	}
@@ -30,8 +30,8 @@ func newCtx(st *State, act Action, sto *Store) *Ctx {
 
 		Store: sto,
 
-		Log: Log,
-		Dbg: Dbg,
+		Log: ag.Log,
+		Dbg: ag.Dbg,
 	}
 }
 
