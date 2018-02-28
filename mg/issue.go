@@ -35,14 +35,25 @@ type Issue struct {
 	Message string
 }
 
-func (isu *Issue) InView(v *View) bool {
-	if v.Path != "" && isu.Path != "" {
+func (isu Issue) Equal(p Issue) bool {
+	return isu.SameFile(p) && isu.Row == p.Row && isu.Message == p.Message
+}
+
+func (isu Issue) SameFile(p Issue) bool {
+	if isu.Path != "" {
+		return isu.Path == p.Path
+	}
+	return isu.Name == p.Name
+}
+
+func (isu Issue) InView(v *View) bool {
+	if isu.Path != "" {
 		return v.Path == isu.Path
 	}
 	return isu.Name == v.Name
 }
 
-func (isu *Issue) Valid() bool {
+func (isu Issue) Valid() bool {
 	return (isu.Name != "" || isu.Path != "") && isu.Message != ""
 }
 
@@ -85,7 +96,7 @@ func (s IssueSet) Remove(l ...Issue) IssueSet {
 
 func (s IssueSet) Has(p Issue) bool {
 	for _, q := range s {
-		if p == q {
+		if p.Equal(q) {
 			return true
 		}
 	}
