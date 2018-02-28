@@ -165,3 +165,11 @@ func GoVet(args ...string) *Linter {
 		Label: "Go/Vet",
 	}
 }
+
+func GoTest(args ...string) *Linter {
+	return &Linter{
+		Name:  "go",
+		Args:  append([]string{"test"}, args...),
+		Label: "Go/Test",
+	}
+}
