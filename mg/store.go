@@ -21,6 +21,7 @@ type Store struct {
 	after     []Reducer
 	cfg       func() EditorConfig
 	ag        *Agent
+	tasks     *taskTracker
 }
 
 func (sto *Store) Dispatch(act Action) {
@@ -99,11 +100,14 @@ func (sto *Store) prepState(st *State) *State {
 }
 
 func newStore(ag *Agent, l Listener) *Store {
-	return &Store{
+	sto := &Store{
 		listener: l,
 		state:    NewState(),
 		ag:       ag,
 	}
+	sto.tasks = newTaskTracker(sto.Dispatch)
+	sto.After(sto.tasks)
+	return sto
 }
 
 func (sto *Store) Subscribe(l Listener) (unsubscribe func()) {
@@ -154,4 +158,8 @@ func (sto *Store) EditorConfig(f func() EditorConfig) *Store {
 
 	sto.cfg = f
 	return sto
+}
+
+func (sto *Store) Begin(t Task) *TaskTicket {
+	return sto.tasks.Begin(t)
 }

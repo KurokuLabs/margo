@@ -54,6 +54,10 @@ func (mx *Ctx) Copy(updaters ...func(*Ctx)) *Ctx {
 	return &x
 }
 
+func (mx *Ctx) Begin(t Task) *TaskTicket {
+	return mx.Store.Begin(t)
+}
+
 type Reducer interface {
 	Reduce(*Ctx) *State
 }
