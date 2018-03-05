@@ -18,6 +18,8 @@ func Margo(ma mg.Args) {
 		// both GoFmt and GoImports will automatically disable the GoSublime version
 		golang.GoFmt,
 		// or
+		// you will need to install the `goimports` tool manually
+		// https://godoc.org/golang.org/x/tools/cmd/goimports
 		// golang.GoImports,
 
 		// use gocode for autocompletion
