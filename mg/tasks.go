@@ -47,6 +47,7 @@ type taskTracker struct {
 	tickets  []*TaskTicket
 	timer    *time.Timer
 	dispatch Dispatcher
+	buf      bytes.Buffer
 }
 
 func newTaskTracker(dispatch Dispatcher) *taskTracker {
@@ -68,40 +69,56 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 			tr.resetTimer()
 		}
 	}
-	return mx.AddStatus(tr.status()...)
+	if s := tr.status(); s != "" {
+		return mx.AddStatus(s)
+	}
+	return mx.State
 }
 
-func (tr *taskTracker) status() []string {
-	stale, fresh := tr.titles()
-	if len(stale) == 0 && len(fresh) == 0 {
-		return nil
-	}
-
-	status := []string{fmt.Sprintf("Tasks (%d)", len(tr.tickets)), ""}
-	const (
-		staleIcon = '⊙'
-		freshIcon = '⊗'
-	)
-	buf := bytes.NewBuffer(nil)
-	for range stale {
-		buf.WriteRune(staleIcon)
-	}
-	for range fresh {
-		buf.WriteRune(freshIcon)
-	}
-	for _, s := range fresh {
-		if s != "" {
-			buf.WriteByte(' ')
-			buf.WriteString(s)
-			break
+func (tr *taskTracker) status() string {
+	tr.buf.Reset()
+	now := time.Now()
+	tr.buf.WriteString("Tasks")
+	initLen := tr.buf.Len()
+	title := ""
+	for _, t := range tr.tickets {
+		age := now.Sub(t.Start) / time.Second
+		switch age {
+		case 0:
+		case 1:
+			tr.buf.WriteString(" ◔")
+		case 2:
+			tr.buf.WriteString(" ◑")
+		case 3:
+			tr.buf.WriteString(" ◕")
+		default:
+			tr.buf.WriteString(" ●")
+		}
+		if title == "" && t.Title != "" && age >= 1 && age <= 3 {
+			title = t.Title
 		}
 	}
-	status[1] = buf.String()
-	return status
+	if tr.buf.Len() == initLen {
+		return ""
+	}
+	if title != "" {
+		tr.buf.WriteByte(' ')
+		tr.buf.WriteString(title)
+	}
+	return tr.buf.String()
 }
 
 func (tr *taskTracker) titles() (stale []string, fresh []string) {
 	now := time.Now()
+	for _, t := range tr.tickets {
+		dur := now.Sub(t.Start)
+		switch {
+		case dur >= 5*time.Second:
+			stale = append(stale, t.Title)
+		case dur >= 1*time.Second:
+			fresh = append(fresh, t.Title)
+		}
+	}
 	for _, t := range tr.tickets {
 		dur := now.Sub(t.Start)
 		switch {
