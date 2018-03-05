@@ -62,6 +62,25 @@ type Reducer interface {
 	Reduce(*Ctx) *State
 }
 
+type ReducerList []Reducer
+
+func (rl ReducerList) ReduceCtx(mx *Ctx) *Ctx {
+	for _, r := range rl {
+		mx = mx.Copy(func(mx *Ctx) {
+			mx.State = r.Reduce(mx)
+		})
+	}
+	return mx
+}
+
+func (rl ReducerList) Reduce(mx *Ctx) *State {
+	return rl.ReduceCtx(mx).State
+}
+
+func (rl ReducerList) Add(reducers ...Reducer) ReducerList {
+	return append(rl[:len(rl):len(rl)], reducers...)
+}
+
 type Reduce func(*Ctx) *State
 
 func (r Reduce) Reduce(mx *Ctx) *State {

@@ -11,17 +11,38 @@ type Dispatcher func(Action)
 
 type Listener func(*State)
 
+type storeReducers struct {
+	before ReducerList
+	use    ReducerList
+	after  ReducerList
+}
+
+func (sr storeReducers) Reduce(mx *Ctx) *State {
+	mx = sr.before.ReduceCtx(mx)
+	mx = sr.use.ReduceCtx(mx)
+	mx = sr.after.ReduceCtx(mx)
+	return mx.State
+}
+
+func (sr storeReducers) Copy(updaters ...func(*storeReducers)) storeReducers {
+	for _, f := range updaters {
+		f(&sr)
+	}
+	return sr
+}
+
 type Store struct {
 	mu        sync.Mutex
 	state     *State
 	listeners []*struct{ Listener }
 	listener  Listener
-	before    []Reducer
-	use       []Reducer
-	after     []Reducer
-	cfg       func() EditorConfig
-	ag        *Agent
-	tasks     *taskTracker
+	reducers  struct {
+		sync.Mutex
+		storeReducers
+	}
+	cfg   func() EditorConfig
+	ag    *Agent
+	tasks *taskTracker
 }
 
 func (sto *Store) Dispatch(act Action) {
@@ -32,7 +53,9 @@ func (sto *Store) dispatch(act Action) {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
-	sto.reduce(newCtx(sto.ag, sto.prepState(sto.state), act, sto), true)
+	mx := newCtx(sto.ag, sto.prepState(sto.state), act, sto)
+	st := sto.reducers.Reduce(mx)
+	sto.updateState(st, true)
 }
 
 func (sto *Store) syncRq(ag *Agent, rq *agentReq) {
@@ -55,32 +78,19 @@ func (sto *Store) syncRq(ag *Agent, rq *agentReq) {
 
 	mx = rq.Props.updateCtx(mx)
 	mx.State = sto.prepState(mx.State)
-	rs.State = sto.reduce(mx, false)
+	mx.State = sto.reducers.Reduce(mx)
+	rs.State = sto.updateState(mx.State, false)
 }
 
-func (sto *Store) reduce(mx *Ctx, callListener bool) *State {
-	apply := func(rl []Reducer) {
-		for _, r := range rl {
-			mx = mx.Copy(func(mx *Ctx) {
-				mx.State = r.Reduce(mx)
-			})
-		}
-	}
-	apply(sto.before)
-	apply(sto.use)
-	apply(sto.after)
-
+func (sto *Store) updateState(st *State, callListener bool) *State {
 	if callListener && sto.listener != nil {
-		sto.listener(mx.State)
+		sto.listener(st)
 	}
-
 	for _, p := range sto.listeners {
-		p.Listener(mx.State)
+		p.Listener(st)
 	}
-
-	sto.state = mx.State
-
-	return mx.State
+	sto.state = st
+	return st
 }
 
 func (sto *Store) State() *State {
@@ -131,25 +141,30 @@ func (sto *Store) Subscribe(l Listener) (unsubscribe func()) {
 	}
 }
 
+func (sto *Store) updateReducers(updaters ...func(*storeReducers)) *Store {
+	sto.reducers.Lock()
+	defer sto.reducers.Unlock()
+
+	sto.reducers.storeReducers = sto.reducers.Copy(updaters...)
+	return sto
+}
+
 func (sto *Store) Before(reducers ...Reducer) *Store {
-	return sto.useReducers(&sto.before, reducers)
+	return sto.updateReducers(func(sr *storeReducers) {
+		sr.before = sr.before.Add(reducers...)
+	})
 }
 
 func (sto *Store) Use(reducers ...Reducer) *Store {
-	return sto.useReducers(&sto.use, reducers)
+	return sto.updateReducers(func(sr *storeReducers) {
+		sr.use = sr.use.Add(reducers...)
+	})
 }
 
 func (sto *Store) After(reducers ...Reducer) *Store {
-	return sto.useReducers(&sto.after, reducers)
-}
-
-func (sto *Store) useReducers(p *[]Reducer, reducers []Reducer) *Store {
-	sto.mu.Lock()
-	defer sto.mu.Unlock()
-
-	l := *p
-	*p = append(l[:len(l):len(l)], reducers...)
-	return sto
+	return sto.updateReducers(func(sr *storeReducers) {
+		sr.after = sr.after.Add(reducers...)
+	})
 }
 
 func (sto *Store) EditorConfig(f func() EditorConfig) *Store {
