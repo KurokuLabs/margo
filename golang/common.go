@@ -71,6 +71,7 @@ type CursorNode struct {
 	AstFile   *ast.File
 	TokenFile *token.File
 
+	GenDecl    *ast.GenDecl
 	ImportSpec *ast.ImportSpec
 	Comment    *ast.Comment
 	BlockStmt  *ast.BlockStmt
@@ -102,6 +103,8 @@ func (cn *CursorNode) Visit(node ast.Node) ast.Visitor {
 
 	cn.Node = node
 	switch x := node.(type) {
+	case *ast.GenDecl:
+		cn.GenDecl = x
 	case *ast.BlockStmt:
 		cn.BlockStmt = x
 	case *ast.BasicLit:
