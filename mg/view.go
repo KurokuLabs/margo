@@ -66,7 +66,7 @@ func (v *View) Filename() string {
 }
 
 func (v *View) ReadAll() ([]byte, error) {
-	if len(v.Src) != 0 {
+	if v.Dirty || len(v.Src) != 0 {
 		return v.Src, nil
 	}
 
@@ -84,7 +84,7 @@ func (v *View) Valid() bool {
 }
 
 func (v *View) Open() (io.ReadCloser, error) {
-	if len(v.Src) != 0 {
+	if v.Dirty || len(v.Src) != 0 {
 		return ioutil.NopCloser(bytes.NewReader(v.Src)), nil
 	}
 
