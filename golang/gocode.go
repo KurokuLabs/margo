@@ -243,6 +243,9 @@ func initGocodeReducer(mx *mg.Ctx, g *Gocode) (*mg.State, *gocodeCtx) {
 
 	bctx := BuildContext(mx)
 	src, _ := st.View.ReadAll()
+	if len(src) == 0 {
+		return st, nil
+	}
 	pos := clampSrcPos(src, st.View.Pos)
 	pos = mg.BytePos(src, pos)
 
