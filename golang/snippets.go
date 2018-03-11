@@ -23,7 +23,12 @@ func (sf SnippetFuncs) Reduce(mx *mg.Ctx) *mg.State {
 		return mx.State
 	}
 
-	cx := NewCompletionCtx(mx)
+	src, _ := mx.View.ReadAll()
+	cx := NewCompletionCtx(mx, src, mx.View.Pos)
+	if cx.Scope.Any(StringScope, ImportPathScope, CommentScope) {
+		return mx.State
+	}
+
 	var cl []mg.Completion
 	for _, f := range sf {
 		cl = append(cl, f(cx)...)
@@ -41,7 +46,7 @@ func (sf SnippetFuncs) fixCompletion(c *mg.Completion) {
 }
 
 func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.PkgName != "" {
+	if cx.Scope&PackageScope == 0 {
 		return nil
 	}
 
@@ -63,7 +68,7 @@ $0
 }
 
 func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.GlobalScope || cx.PkgName != "main" {
+	if cx.Scope&FileScope == 0 || cx.PkgName != "main" {
 		return nil
 	}
 
@@ -76,7 +81,7 @@ func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
 
 	return []mg.Completion{{
 		Query: `func main`,
-		Title: `{...}`,
+		Title: `main() {...}`,
 		Src: strings.TrimSpace(`
 func main() {
 	$0
@@ -86,7 +91,7 @@ func main() {
 }
 
 func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.GlobalScope {
+	if cx.Scope&FileScope == 0 {
 		return nil
 	}
 
@@ -99,7 +104,7 @@ func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
 
 	return []mg.Completion{{
 		Query: `func init`,
-		Title: `{...}`,
+		Title: `init() {...}`,
 		Src: strings.TrimSpace(`
 func init() {
 	$0
@@ -109,22 +114,35 @@ func init() {
 }
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.GlobalScope {
-		return nil
-	}
-	return []mg.Completion{{
-		Query: `func`,
-		Title: `{...}`,
-		Src: strings.TrimSpace(`
+	if cx.Scope&FileScope != 0 {
+		return []mg.Completion{{
+			Query: `func`,
+			Title: `name() {...}`,
+			Src: strings.TrimSpace(`
 func ${1:name}($2)$3 {
 	$0
 }
-		`),
-	}}
+			`),
+		}}
+	}
+
+	if cx.Scope&BlockScope != 0 || cx.Scope&VarScope != 0 {
+		return []mg.Completion{{
+			Query: `func`,
+			Title: `func() {...}`,
+			Src: strings.TrimSpace(`
+func($1)$2 {
+	$3
+}$0
+			`),
+		}}
+	}
+
+	return nil
 }
 
 func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.GlobalScope {
+	if cx.Scope&FileScope == 0 {
 		return nil
 	}
 	return []mg.Completion{
