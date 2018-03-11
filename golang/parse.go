@@ -31,7 +31,11 @@ func ParseFile(sto *mg.Store, fn string, src []byte) *ParsedFile {
 		var err error
 		src, err = ioutil.ReadFile(fn)
 		if err != nil {
-			return &ParsedFile{AstFile: NilAstFile, Error: err}
+			return &ParsedFile{
+				AstFile:   NilAstFile,
+				TokenFile: NilTokenFile,
+				Error:     err,
+			}
 		}
 	}
 
