@@ -4,7 +4,6 @@ import (
 	"disposa.blue/margo/mg"
 	"go/ast"
 	"go/build"
-	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -65,8 +64,6 @@ func NodeEnclosesPos(node ast.Node, pos token.Pos) bool {
 }
 
 type CursorNode struct {
-	Fset *token.FileSet
-
 	Pos       token.Pos
 	AstFile   *ast.File
 	TokenFile *token.File
@@ -120,21 +117,13 @@ func (cn *CursorNode) Visit(node ast.Node) ast.Visitor {
 	return cn
 }
 
-func ParseCursorNode(src []byte, offset int) *CursorNode {
-	cn := &CursorNode{Fset: token.NewFileSet()}
-
-	// TODO: caching
-	cn.AstFile, _ = parser.ParseFile(cn.Fset, "_.go", src, parser.ParseComments)
-	if cn.AstFile == nil {
-		return cn
+func ParseCursorNode(sto *mg.Store, src []byte, offset int) *CursorNode {
+	pf := ParseFile(sto, "_.go", src)
+	cn := &CursorNode{
+		AstFile:   pf.AstFile,
+		TokenFile: pf.TokenFile,
+		Pos:       pf.TokenFile.Pos(offset),
 	}
-
-	cn.TokenFile = cn.Fset.File(cn.AstFile.Pos())
-	if cn.TokenFile == nil {
-		return cn
-	}
-
-	cn.Pos = cn.TokenFile.Pos(offset)
 	cn.ScanFile(cn.AstFile)
 	return cn
 }

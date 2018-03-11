@@ -247,7 +247,7 @@ func initGocodeReducer(mx *mg.Ctx, g *Gocode) (*mg.State, *gocodeCtx) {
 	pos = mg.BytePos(src, pos)
 
 	// don't do completion inside comments
-	cn := ParseCursorNode(src, pos)
+	cn := ParseCursorNode(mx.Store, src, pos)
 	if cn.Comment != nil {
 		return st, nil
 	}
