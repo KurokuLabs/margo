@@ -13,6 +13,7 @@ var (
 		InitFuncSnippet,
 		FuncSnippet,
 		GenDeclSnippet,
+		MapSnippet,
 	}
 )
 
@@ -172,6 +173,24 @@ const (
 	${1:name} = ${2:value}
 )
 			`),
+		},
+	}
+}
+
+func MapSnippet(cx *CompletionCtx) []mg.Completion {
+	if cx.Scope&VarScope == 0 && cx.Scope&BlockScope == 0 {
+		return nil
+	}
+	return []mg.Completion{
+		{
+			Query: `map`,
+			Title: `map[T]T`,
+			Src:   `map[${1:T}]${2:T}`,
+		},
+		{
+			Query: `map`,
+			Title: `map[T]T{...}`,
+			Src:   `map[${1:T}]${2:T}{$0}`,
 		},
 	}
 }
