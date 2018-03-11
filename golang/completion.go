@@ -22,6 +22,10 @@ const (
 
 type CompletionScope uint64
 
+func (cs CompletionScope) Is(scope CompletionScope) bool {
+	return cs&scope != 0
+}
+
 func (cs CompletionScope) Any(scopes ...CompletionScope) bool {
 	for _, s := range scopes {
 		if cs&s != 0 {

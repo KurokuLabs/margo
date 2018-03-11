@@ -47,7 +47,7 @@ func (sf SnippetFuncs) fixCompletion(c *mg.Completion) {
 }
 
 func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&PackageScope == 0 {
+	if !cx.Scope.Is(PackageScope) {
 		return nil
 	}
 
@@ -69,7 +69,7 @@ $0
 }
 
 func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&FileScope == 0 || cx.PkgName != "main" {
+	if !cx.Scope.Is(FileScope) || cx.PkgName != "main" {
 		return nil
 	}
 
@@ -92,7 +92,7 @@ func main() {
 }
 
 func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&FileScope == 0 {
+	if !cx.Scope.Is(FileScope) {
 		return nil
 	}
 
@@ -115,7 +115,7 @@ func init() {
 }
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&FileScope != 0 {
+	if cx.Scope.Is(FileScope) {
 		return []mg.Completion{{
 			Query: `func`,
 			Title: `name() {...}`,
@@ -127,7 +127,7 @@ func ${1:name}($2)$3 {
 		}}
 	}
 
-	if cx.Scope&BlockScope != 0 || cx.Scope&VarScope != 0 {
+	if cx.Scope.Any(BlockScope, VarScope) {
 		return []mg.Completion{{
 			Query: `func`,
 			Title: `func() {...}`,
@@ -143,7 +143,7 @@ func($1)$2 {
 }
 
 func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&FileScope == 0 {
+	if !cx.Scope.Is(FileScope) {
 		return nil
 	}
 	return []mg.Completion{
@@ -178,7 +178,7 @@ const (
 }
 
 func MapSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope&VarScope == 0 && cx.Scope&BlockScope == 0 {
+	if !cx.Scope.Any(VarScope, BlockScope) {
 		return nil
 	}
 	return []mg.Completion{
