@@ -12,9 +12,6 @@ func (sc *SyntaxCheck) Reduce(mx *mg.Ctx) *mg.State {
 	if !st.View.LangIs("go") {
 		return st
 	}
-	if !mx.ActionIs(mg.ViewActivated{}, mg.ViewModified{}, mg.ViewSaved{}, mg.QueryIssues{}) {
-		return st
-	}
 
 	v := st.View
 	src, err := v.ReadAll()
@@ -26,6 +23,10 @@ func (sc *SyntaxCheck) Reduce(mx *mg.Ctx) *mg.State {
 	k := key{mg.SrcHash(src)}
 	if issues, ok := mx.Store.Get(k).(mg.IssueSet); ok {
 		return st.AddIssues(issues...)
+	}
+
+	if !mx.ActionIs(mg.ViewActivated{}, mg.ViewModified{}, mg.ViewSaved{}, mg.QueryIssues{}) {
+		return st
 	}
 
 	pf := ParseFile(mx.Store, v.Filename(), src)
