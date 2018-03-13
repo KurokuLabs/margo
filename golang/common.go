@@ -118,11 +118,11 @@ func (cn *CursorNode) Visit(node ast.Node) ast.Visitor {
 }
 
 func ParseCursorNode(sto *mg.Store, src []byte, offset int) *CursorNode {
-	pf := ParseFile(sto, "_.go", src)
+	pf := ParseFile(sto, "", src)
 	cn := &CursorNode{
 		AstFile:   pf.AstFile,
 		TokenFile: pf.TokenFile,
-		Pos:       pf.TokenFile.Pos(offset),
+		Pos:       token.Pos(pf.TokenFile.Base() + offset),
 	}
 	cn.ScanFile(cn.AstFile)
 	return cn
