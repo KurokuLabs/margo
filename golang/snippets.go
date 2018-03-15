@@ -47,7 +47,7 @@ func (sf SnippetFuncs) fixCompletion(c *mg.Completion) {
 }
 
 func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(PackageScope) {
+	if cx.PkgName != "" || !cx.Scope.Is(PackageScope) {
 		return nil
 	}
 
