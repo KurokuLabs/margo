@@ -83,6 +83,16 @@ type CursorNode struct {
 }
 
 func (cn *CursorNode) ScanFile(af *ast.File) {
+	pos := af.Package
+	end := pos + token.Pos(len("package"))
+	if af.Name != nil {
+		end = pos + token.Pos(af.Name.End())
+	}
+	if cn.Pos >= pos && cn.Pos <= end {
+		return
+	}
+
+	cn.Node = af
 	ast.Walk(cn, af)
 	for _, cg := range af.Comments {
 		for _, c := range cg.List {
