@@ -64,14 +64,21 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 		AstFile:    af,
 		PkgName:    af.Name.String(),
 	}
-	switch {
-	case cx.PkgName == "":
+
+	if cx.PkgName == "_" || cx.PkgName == "" {
 		cx.Scope |= PackageScope
-	case cn.BlockStmt == nil && cn.GenDecl == nil:
+		return cx
+	}
+
+	switch cx.CursorNode.Node.(type) {
+	case nil:
+		cx.Scope |= PackageScope
+	case *ast.File:
 		cx.Scope |= FileScope
-	case cn.BlockStmt != nil:
+	case *ast.BlockStmt:
 		cx.Scope |= BlockScope
 	}
+
 	if gd := cn.GenDecl; gd != nil {
 		switch gd.Tok {
 		case token.IMPORT:

@@ -14,11 +14,13 @@ const (
 )
 
 var (
-	NilAstFile   = &ast.File{}
-	NilTokenFile = &token.File{}
+	NilFset       = token.NewFileSet()
+	NilAstFile, _ = parser.ParseFile(NilFset, "", `package _`, 0)
+	NilTokenFile  = NilFset.File(NilAstFile.Pos())
 )
 
 type ParsedFile struct {
+	Fset      *token.FileSet
 	AstFile   *ast.File
 	TokenFile *token.File
 	Error     error
@@ -34,6 +36,7 @@ func ParseFile(sto *mg.Store, fn string, src []byte) *ParsedFile {
 		}
 		if len(src) == 0 {
 			return &ParsedFile{
+				Fset:      NilFset,
 				AstFile:   NilAstFile,
 				TokenFile: NilTokenFile,
 				Error:     err,
@@ -49,10 +52,9 @@ func ParseFile(sto *mg.Store, fn string, src []byte) *ParsedFile {
 		}
 	}
 
-	fset := token.NewFileSet()
-	pf := &ParsedFile{}
-	pf.AstFile, pf.Error = parser.ParseFile(fset, fn, src, mode)
-	pf.TokenFile = fset.File(pf.AstFile.Pos())
+	pf := &ParsedFile{Fset: token.NewFileSet()}
+	pf.AstFile, pf.Error = parser.ParseFile(pf.Fset, fn, src, mode)
+	pf.TokenFile = pf.Fset.File(pf.AstFile.Pos())
 	pf.ErrorList, _ = pf.Error.(scanner.ErrorList)
 	if pf.AstFile == nil {
 		pf.AstFile = NilAstFile
