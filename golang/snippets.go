@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -27,7 +28,15 @@ func (sf SnippetFuncs) Reduce(mx *mg.Ctx) *mg.State {
 	}
 
 	src, _ := mx.View.ReadAll()
-	cx := NewCompletionCtx(mx, src, mx.View.Pos)
+	pos := mx.View.Pos
+	for {
+		r, n := utf8.DecodeLastRune(src[:pos])
+		if !IsLetter(r) {
+			break
+		}
+		pos -= n
+	}
+	cx := NewCompletionCtx(mx, src, pos)
 	if cx.Scope.Any(StringScope, ImportPathScope, CommentScope) {
 		return mx.State
 	}
