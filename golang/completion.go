@@ -107,3 +107,18 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 	}
 	return cx
 }
+
+func DedentCompletion(s string) string {
+	s = strings.TrimLeft(s, "\n")
+	sfx := strings.TrimLeft(s, " \t")
+	pfx := s[:len(s)-len(sfx)]
+	if pfx == "" {
+		return s
+	}
+	s = strings.TrimSpace(s)
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimPrefix(ln, pfx)
+	}
+	return strings.Join(lines, "\n")
+}

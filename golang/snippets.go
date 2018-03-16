@@ -53,6 +53,7 @@ func (sf SnippetFuncs) Reduce(mx *mg.Ctx) *mg.State {
 }
 
 func (sf SnippetFuncs) fixCompletion(c *mg.Completion) {
+	c.Src = DedentCompletion(c.Src)
 	if c.Tag == "" {
 		c.Tag = mg.SnippetTag
 	}
