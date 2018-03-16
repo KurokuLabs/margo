@@ -3,7 +3,6 @@ package golang
 import (
 	"disposa.blue/margo/mg"
 	"go/ast"
-	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -73,11 +72,11 @@ func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
 
 	return []mg.Completion{{
 		Query: `package ` + name,
-		Src: strings.TrimSpace(`
-package ` + name + `
+		Src: `
+			package ` + name + `
 
-$0
-		`),
+			$0
+		`,
 	}}
 }
 
@@ -96,11 +95,11 @@ func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
 	return []mg.Completion{{
 		Query: `func main`,
 		Title: `main() {...}`,
-		Src: strings.TrimSpace(`
-func main() {
-	$0
-}
-		`),
+		Src: `
+			func main() {
+				$0
+			}
+		`,
 	}}
 }
 
@@ -119,11 +118,11 @@ func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
 	return []mg.Completion{{
 		Query: `func init`,
 		Title: `init() {...}`,
-		Src: strings.TrimSpace(`
-func init() {
-	$0
-}
-		`),
+		Src: `
+			func init() {
+				$0
+			}
+		`,
 	}}
 }
 
@@ -132,11 +131,11 @@ func FuncSnippet(cx *CompletionCtx) []mg.Completion {
 		comp := mg.Completion{
 			Query: `func`,
 			Title: `name() {...}`,
-			Src: strings.TrimSpace(`
-func ${1:name}($2)$3 {
-	$0
-}
-			`),
+			Src: `
+				func ${1:name}($2)$3 {
+					$0
+				}
+			`,
 		}
 		if !cx.IsTestFile {
 			return []mg.Completion{comp}
@@ -145,31 +144,31 @@ func ${1:name}($2)$3 {
 			{
 				Query: `func Test`,
 				Title: `Test() {...}`,
-				Src: strings.TrimSpace(`
-func Test${1:name}(t *testing.T) {
-	$0
-}
-				`),
+				Src: `
+					func Test${1:name}(t *testing.T) {
+						$0
+					}
+				`,
 			},
 			{
 				Query: `func Benchmark`,
 				Title: `Benchmark() {...}`,
-				Src: strings.TrimSpace(`
-func Benchmark${1:name}(b *testing.B) {
-	$0
-}
-				`),
+				Src: `
+					func Benchmark${1:name}(b *testing.B) {
+						$0
+					}
+				`,
 			},
 			{
 				Query: `func Example`,
 				Title: `Example() {...}`,
-				Src: strings.TrimSpace(`
-func Example${1:name}() {
-	$0
+				Src: `
+					func Example${1:name}() {
+						$0
 
-	// Output:
-}
-				`),
+						// Output:
+					}
+				`,
 			},
 		}
 	}
@@ -178,11 +177,11 @@ func Example${1:name}() {
 		return []mg.Completion{{
 			Query: `func`,
 			Title: `func() {...}`,
-			Src: strings.TrimSpace(`
-func($1)$2 {
-	$3
-}$0
-			`),
+			Src: `
+				func($1)$2 {
+					$3
+				}$0
+			`,
 		}}
 	}
 
@@ -254,22 +253,22 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 			cl = append(cl, mg.Completion{
 				Query: `func method ` + f.typ,
 				Title: `(` + f.typ + `) method() {...}`,
-				Src: strings.TrimSpace(`
-func (` + f.nm + ` ` + f.typ + `) ${1:name}($2)$3 {
-	$0
-}
-				`),
+				Src: `
+					func (` + f.nm + ` ` + f.typ + `) ${1:name}($2)$3 {
+						$0
+					}
+				`,
 			})
 		} else {
 			nm := receiverName(typ)
 			cl = append(cl, mg.Completion{
 				Query: `func method ` + typ,
 				Title: `(` + typ + `) method() {...}`,
-				Src: strings.TrimSpace(`
-func (${1:` + nm + `} ${2:*` + typ + `}) ${3:name}($4)$5 {
-	$0
-}
-				`),
+				Src: `
+					func (${1:` + nm + `} ${2:*` + typ + `}) ${3:name}($4)$5 {
+						$0
+					}
+				`,
 			})
 		}
 	}
@@ -288,29 +287,29 @@ func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
 		{
 			Query: `import`,
 			Title: `(...)`,
-			Src: strings.TrimSpace(`
-import (
-	"$0"
-)
-			`),
+			Src: `
+				import (
+					"$0"
+				)
+			`,
 		},
 		{
 			Query: `var`,
 			Title: `(...)`,
-			Src: strings.TrimSpace(`
-var (
-	${1:name} = ${2:value}
-)
-			`),
+			Src: `
+				var (
+					${1:name} = ${2:value}
+				)
+			`,
 		},
 		{
 			Query: `const`,
 			Title: `(...)`,
-			Src: strings.TrimSpace(`
-const (
-	${1:name} = ${2:value}
-)
-			`),
+			Src: `
+				const (
+					${1:name} = ${2:value}
+				)
+			`,
 		},
 	}
 }
@@ -341,11 +340,11 @@ func TypeSnippet(cx *CompletionCtx) []mg.Completion {
 		{
 			Query: `type struct`,
 			Title: `struct {}`,
-			Src: strings.TrimSpace(`
-type ${1:T} struct {
-	${2:V}
-}
-			`),
+			Src: `
+				type ${1:T} struct {
+					${2:V}
+				}
+			`,
 		},
 		{
 			Query: `type`,
