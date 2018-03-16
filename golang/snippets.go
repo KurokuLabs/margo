@@ -17,6 +17,7 @@ var (
 		MethodSnippet,
 		GenDeclSnippet,
 		MapSnippet,
+		TypeSnippet,
 	}
 )
 
@@ -127,7 +128,7 @@ func init() {
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
 	if cx.Scope.Is(FileScope) {
-		return []mg.Completion{{
+		comp := mg.Completion{
 			Query: `func`,
 			Title: `name() {...}`,
 			Src: strings.TrimSpace(`
@@ -135,7 +136,41 @@ func ${1:name}($2)$3 {
 	$0
 }
 			`),
-		}}
+		}
+		if !cx.IsTestFile {
+			return []mg.Completion{comp}
+		}
+		return []mg.Completion{
+			{
+				Query: `func Test`,
+				Title: `Test() {...}`,
+				Src: strings.TrimSpace(`
+func Test${1:name}(t *testing.T) {
+	$0
+}
+				`),
+			},
+			{
+				Query: `func Benchmark`,
+				Title: `Benchmark() {...}`,
+				Src: strings.TrimSpace(`
+func Benchmark${1:name}(b *testing.B) {
+	$0
+}
+				`),
+			},
+			{
+				Query: `func Example`,
+				Title: `Example() {...}`,
+				Src: strings.TrimSpace(`
+func Example${1:name}() {
+	$0
+
+	// Output:
+}
+				`),
+			},
+		}
 	}
 
 	if cx.Scope.Any(BlockScope, VarScope) {
@@ -164,7 +199,7 @@ func receiverName(typeName string) string {
 }
 
 func MethodSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
+	if cx.IsTestFile || !cx.Scope.Is(FileScope) {
 		return nil
 	}
 
@@ -293,6 +328,28 @@ func MapSnippet(cx *CompletionCtx) []mg.Completion {
 			Query: `map`,
 			Title: `map[T]T{...}`,
 			Src:   `map[${1:T}]${2:T}{$0}`,
+		},
+	}
+}
+
+func TypeSnippet(cx *CompletionCtx) []mg.Completion {
+	if !cx.Scope.Any(FileScope, BlockScope) {
+		return nil
+	}
+	return []mg.Completion{
+		{
+			Query: `type struct`,
+			Title: `struct {}`,
+			Src: strings.TrimSpace(`
+type ${1:T} struct {
+	${2:V}
+}
+			`),
+		},
+		{
+			Query: `type`,
+			Title: `type T`,
+			Src:   `type ${1:T} ${2:V}`,
 		},
 	}
 }

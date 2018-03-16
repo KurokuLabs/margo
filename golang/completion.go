@@ -4,6 +4,7 @@ import (
 	"disposa.blue/margo/mg"
 	"go/ast"
 	"go/token"
+	"strings"
 )
 
 const (
@@ -50,6 +51,7 @@ type CompletionCtx struct {
 	AstFile    *ast.File
 	Scope      CompletionScope
 	PkgName    string
+	IsTestFile bool
 }
 
 func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
@@ -64,6 +66,8 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 		AstFile:    af,
 		PkgName:    af.Name.String(),
 	}
+	cx.IsTestFile = strings.HasSuffix(mx.View.Filename(), "_test.go") ||
+		strings.HasSuffix(cx.PkgName, "_test")
 
 	if cx.PkgName == "_" || cx.PkgName == "" {
 		cx.Scope |= PackageScope
