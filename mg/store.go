@@ -67,7 +67,8 @@ func (sto *Store) dispatch(act Action) {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
-	mx := newCtx(sto.ag, sto.prepState(sto.state), act, sto)
+	mx, done := newCtx(sto.ag, sto.prepState(sto.state), act, sto)
+	defer close(done)
 	st := sto.reducers.Reduce(mx)
 	sto.updateState(st, true)
 }
@@ -77,7 +78,8 @@ func (sto *Store) syncRq(ag *Agent, rq *agentReq) {
 	defer sto.mu.Unlock()
 
 	name := rq.Action.Name
-	mx := newCtx(sto.ag, sto.state, ag.createAction(name), sto)
+	mx, done := newCtx(sto.ag, sto.state, ag.createAction(name), sto)
+	defer close(done)
 
 	rs := agentRes{Cookie: rq.Cookie}
 	rs.State = mx.State
