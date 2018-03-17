@@ -221,3 +221,10 @@ func (sto *Store) Get(k interface{}) interface{} {
 
 	return sto.cache.m[k]
 }
+
+func (sto *Store) Del(k interface{}) {
+	sto.cache.Lock()
+	defer sto.cache.Unlock()
+
+	delete(sto.cache.m, k)
+}

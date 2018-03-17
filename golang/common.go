@@ -132,8 +132,8 @@ func (cn *CursorNode) Visit(node ast.Node) ast.Visitor {
 	return cn
 }
 
-func ParseCursorNode(sto *mg.Store, src []byte, offset int) *CursorNode {
-	pf := ParseFile(sto, "", src)
+func ParseCursorNode(kvs mg.KVStore, src []byte, offset int) *CursorNode {
+	pf := ParseFile(kvs, "", src)
 	cn := &CursorNode{
 		AstFile:   pf.AstFile,
 		TokenFile: pf.TokenFile,
