@@ -150,7 +150,7 @@ func GoInstall(args ...string) *Linter {
 	return &Linter{
 		Name:  "go",
 		Args:  append([]string{"install"}, args...),
-		Label: "Go/Install",
+		Label: "Go-Install",
 	}
 }
 
@@ -164,7 +164,7 @@ func GoVet(args ...string) *Linter {
 	return &Linter{
 		Name:  "go",
 		Args:  append([]string{"vet"}, args...),
-		Label: "Go/Vet",
+		Label: "Go-Vet",
 	}
 }
 
@@ -172,6 +172,6 @@ func GoTest(args ...string) *Linter {
 	return &Linter{
 		Name:  "go",
 		Args:  append([]string{"test"}, args...),
-		Label: "Go/Test",
+		Label: "Go-Test",
 	}
 }
