@@ -73,6 +73,10 @@ func newAgentReq() *agentReq {
 	return &agentReq{Props: makeClientProps()}
 }
 
+func (rq *agentReq) finalize(ag *Agent) {
+	rq.Props.finalize(ag)
+}
+
 type agentRes struct {
 	Cookie string
 	Error  string
@@ -139,7 +143,7 @@ func (ag *Agent) communicate() error {
 			}
 			return fmt.Errorf("ipc.decode: %s", err)
 		}
-
+		rq.finalize(ag)
 		// TODO: put this on a channel in the future.
 		// at the moment we lock the store and block new requests to maintain request/response order
 		// but decoding time could become a problem if we start sending large requests from the client
