@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"go/build"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -325,6 +326,16 @@ func (c *clientProps) updateCtx(mx *Ctx) *Ctx {
 				// at moment gocode is most affected,
 				// but to fix it here means we have to read the file off-disk
 				// so I'd rather not do that until we have some caching in place
+			}
+			if st.View != nil {
+				osGopath := os.Getenv("GOPATH")
+				fn := st.View.Filename()
+				for _, dir := range strings.Split(osGopath, string(filepath.ListSeparator)) {
+					if IsParentDir(dir, fn) {
+						st.Env = st.Env.Add("GOPATH", osGopath)
+						break
+					}
+				}
 			}
 		})
 	})
