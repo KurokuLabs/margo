@@ -201,10 +201,11 @@ type EphemeralState struct {
 
 type State struct {
 	EphemeralState
-	View     *View
-	Env      EnvMap
-	Editor   EditorProps
-	Obsolete bool
+	View   *View
+	Env    EnvMap
+	Editor EditorProps
+
+	clientActions []clientAction
 }
 
 func NewState() *State {
@@ -284,9 +285,10 @@ func (st *State) AddIssues(l ...Issue) *State {
 	})
 }
 
-func (st *State) MarkObsolete() *State {
+func (st *State) addClientActions(l ...clientAction) *State {
 	return st.Copy(func(st *State) {
-		st.Obsolete = true
+		el := st.clientActions
+		st.clientActions = append(el[:len(el):len(el)], l...)
 	})
 }
 
