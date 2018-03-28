@@ -1,9 +1,9 @@
 package margosublime
 
 import (
-	"disposa.blue/margo/mg"
-	"disposa.blue/margo/mgcli"
-	"disposa.blue/margo/sublime"
+	"margo.sh/mg"
+	"margo.sh/mgcli"
+	"margo.sh/sublime"
 	"fmt"
 	"github.com/urfave/cli"
 )

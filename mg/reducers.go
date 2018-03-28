@@ -53,7 +53,7 @@ func (_ restartSupport) prepRestart(mx *Ctx) {
 	if i := strings.LastIndex(dir, "/src/"); i >= 0 {
 		imp = dir[i+5:]
 	}
-	if imp != "margo" && !strings.HasPrefix(imp+"/", "disposa.blue/margo/") {
+	if imp != "margo" && !strings.HasPrefix(imp+"/", "margo.sh/") {
 		return
 	}
 

@@ -1,7 +1,7 @@
 package sublime
 
 import (
-	"disposa.blue/margo/mg"
+	"margo.sh/mg"
 )
 
 var (

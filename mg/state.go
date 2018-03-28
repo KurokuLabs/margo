@@ -2,7 +2,7 @@ package mg
 
 import (
 	"context"
-	"disposa.blue/margo/misc/pprof/pprofdo"
+	"margo.sh/misc/pprof/pprofdo"
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"go/build"

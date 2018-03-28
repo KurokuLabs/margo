@@ -1,7 +1,7 @@
 package sublime
 
 import (
-	"disposa.blue/margo/mgcli"
+	"margo.sh/mgcli"
 	"fmt"
 	"github.com/urfave/cli"
 	"go/build"
@@ -75,7 +75,7 @@ func goInstallAgent(gp string, tags string) error {
 		env = append(env, "GOPATH="+gp)
 	}
 
-	cmdpath := "disposa.blue/margo/cmd/margo.sublime"
+	cmdpath := "margo.sh/cmd/margo.sublime"
 	if s := os.Getenv("MARGO_SUBLIME_CMDPATH"); s != "" {
 		cmdpath = s
 	}

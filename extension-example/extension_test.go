@@ -1,7 +1,7 @@
 package margo
 
 import (
-	"disposa.blue/margo/mg"
+	"margo.sh/mg"
 )
 
 var _ mg.MargoFunc = Margo

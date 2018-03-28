@@ -2,9 +2,9 @@ package golang
 
 import (
 	"bytes"
-	"disposa.blue/margo/golang/internal/gocode"
-	"disposa.blue/margo/mg"
-	"disposa.blue/margo/sublime"
+	"margo.sh/golang/internal/gocode"
+	"margo.sh/mg"
+	"margo.sh/sublime"
 	"fmt"
 	"go/ast"
 	"go/build"

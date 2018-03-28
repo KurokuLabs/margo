@@ -1,8 +1,8 @@
 package margo
 
 import (
-	"disposa.blue/margo/golang"
-	"disposa.blue/margo/mg"
+	"margo.sh/golang"
+	"margo.sh/mg"
 	"time"
 )
 

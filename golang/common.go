@@ -1,7 +1,7 @@
 package golang
 
 import (
-	"disposa.blue/margo/mg"
+	"margo.sh/mg"
 	"go/ast"
 	"go/build"
 	"go/token"

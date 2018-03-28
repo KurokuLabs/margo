@@ -1,7 +1,7 @@
 package main
 
 import (
-	"disposa.blue/margo/cmdpkg/margo"
+	"margo.sh/cmdpkg/margo"
 )
 
 func main() {

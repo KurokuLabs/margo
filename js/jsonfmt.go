@@ -1,7 +1,7 @@
 package js
 
 import (
-	"disposa.blue/margo/mg"
+	"margo.sh/mg"
 	"encoding/json"
 )
 

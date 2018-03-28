@@ -6,8 +6,8 @@ import (
 	"go/format"
 	"os/exec"
 
-	"disposa.blue/margo/mg"
-	"disposa.blue/margo/sublime"
+	"margo.sh/mg"
+	"margo.sh/sublime"
 )
 
 var (

@@ -2,7 +2,7 @@ package golang
 
 import (
 	"bytes"
-	"disposa.blue/margo/mg"
+	"margo.sh/mg"
 	"os"
 	"os/exec"
 	"regexp"
