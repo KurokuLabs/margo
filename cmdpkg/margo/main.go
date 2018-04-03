@@ -72,20 +72,22 @@ func appendSubCmd(cmd *cli.Command, cmds mgcli.Commands, subCmd cli.Command) {
 
 func startAction(cx *cli.Context) error {
 	mc := cmdMap[cx.Command.Name]
+	app := &mgcli.NewApp().App
+	app.Name = mc.Name
+	app.ExitErrHandler = func(_ *cli.Context, _ error) {}
 	newCtx := func(args []string) *cli.Context {
 		flags := flag.NewFlagSet(mc.Name, 0)
 		flags.Usage = func() {}
 		flags.Parse(append([]string{mc.Name}, args...))
-		return cli.NewContext(cx.App, flags, cx)
+		return cli.NewContext(app, flags, cx)
 	}
 	if mc.Build != nil {
 		err := mc.Build.Run(newCtx(nil))
 		if err != nil {
-			e := fmt.Sprintf("%s build %s failed: %s", cx.App.Name, mc.Name, err)
+			e := fmt.Sprintf("%s build failed: %s", mc.Name, err)
 			os.Setenv("MARGO_BUILD_ERROR", e)
 		}
 	}
-	os.Setenv("MARGO_BUILD_ERROR", "build error teest")
 	if mc.Run != nil {
 		return mc.Run.Run(newCtx(cx.Args()))
 	}

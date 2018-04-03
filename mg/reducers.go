@@ -64,7 +64,7 @@ func (_ restartSupport) prepRestart(mx *Ctx) {
 
 	defer mx.Begin(Task{Title: "prepping margo restart"}).Done()
 
-	cmd := exec.Command("go", "test")
+	cmd := exec.Command("margo.sh", "build", mx.AgentName())
 	cmd.Dir = mx.View.Dir()
 	cmd.Env = mx.Env.Environ()
 	out, err := cmd.CombinedOutput()
