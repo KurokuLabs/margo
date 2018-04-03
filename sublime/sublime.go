@@ -58,7 +58,7 @@ func runAction(c *cli.Context) error {
 
 func goInstallAgent(gp string, tags string) error {
 	args := []string{"install", "-v", "-tags=" + tags}
-	if os.Getenv("MARGO_BUILDS_FLAGS_RACE") == "1" {
+	if os.Getenv("MARGO_BUILD_FLAGS_RACE") == "1" {
 		args = append(args, "-race")
 	}
 	for _, tag := range build.Default.ReleaseTags {
