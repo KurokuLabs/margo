@@ -6,6 +6,12 @@ import (
 	"os"
 )
 
+type Commands struct {
+	Name  string
+	Build *cli.Command
+	Run   *cli.Command
+}
+
 type App struct{ cli.App }
 
 func (a *App) RunAndExitOnError() {

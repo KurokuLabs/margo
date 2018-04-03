@@ -2,10 +2,10 @@ package mg
 
 import (
 	"context"
-	"margo.sh/misc/pprof/pprofdo"
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"go/build"
+	"margo.sh/misc/pprof/pprofdo"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -55,6 +55,10 @@ func (mx *Ctx) Value(k interface{}) interface{} {
 		return mx.Parent.Value(k)
 	}
 	return nil
+}
+
+func (mx *Ctx) AgentName() string {
+	return mx.Store.ag.Name
 }
 
 func newCtx(ag *Agent, st *State, act Action, sto *Store) (mx *Ctx, done chan struct{}) {

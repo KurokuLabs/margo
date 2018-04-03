@@ -1,4 +1,4 @@
-go_import_path: disposa.blue/margo
+go_import_path: margo.sh
 language: go
 go:
   - 1.9

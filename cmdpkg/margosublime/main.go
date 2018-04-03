@@ -1,11 +1,11 @@
 package margosublime
 
 import (
+	"fmt"
+	"github.com/urfave/cli"
 	"margo.sh/mg"
 	"margo.sh/mgcli"
 	"margo.sh/sublime"
-	"fmt"
-	"github.com/urfave/cli"
 )
 
 var (
@@ -14,7 +14,7 @@ var (
 )
 
 func Main() {
-	cfg := mg.AgentConfig{}
+	cfg := mg.AgentConfig{AgentName: sublime.AgentName}
 	app := mgcli.NewApp()
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

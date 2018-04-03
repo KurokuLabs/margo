@@ -50,6 +50,9 @@ var (
 )
 
 type AgentConfig struct {
+	// the name of the agent as used in the command `margo.sh [start...] $AgentName`
+	AgentName string
+
 	// Codec is the name of the codec to use for IPC
 	// Valid values are json, cbor or msgpack
 	// Default: json
@@ -111,6 +114,8 @@ func (rs agentRes) finalize() interface{} {
 }
 
 type Agent struct {
+	Name string
+
 	Log   *Logger
 	Store *Store
 
@@ -184,6 +189,7 @@ func (ag *Agent) shutdownIPC() {
 
 func NewAgent(cfg AgentConfig) (*Agent, error) {
 	ag := &Agent{
+		Name:   cfg.AgentName,
 		stdin:  cfg.Stdin,
 		stdout: cfg.Stdout,
 		stderr: cfg.Stderr,
@@ -207,7 +213,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		Use(defaultReducers.use...).
 		After(defaultReducers.after...)
 
-	if e := os.Getenv("MARGO_SUBLIME_INSTALL_FAILED"); e != "" {
+	if e := os.Getenv("MARGO_BUILD_ERROR"); e != "" {
 		ag.Store.Use(Reduce(func(mx *Ctx) *State {
 			return mx.AddStatus(e)
 		}))
