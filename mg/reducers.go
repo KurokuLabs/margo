@@ -12,7 +12,7 @@ var (
 		before, use, after []Reducer
 	}{
 		before: []Reducer{
-			restartSupport{},
+			&restartSupport{},
 		},
 		after: []Reducer{
 			issueSupport{},
@@ -20,26 +20,30 @@ var (
 	}
 )
 
-type restartSupport struct{}
-
-func (r restartSupport) Reduce(mx *Ctx) *State {
-	switch mx.Action.(type) {
-	case ViewSaved:
-		return r.viewSaved(mx)
-	case Restart:
-		mx.Log.Printf("%T action dispatched\n", mx.Action)
-		return mx.addClientActions(clientRestart)
-	case Shutdown:
-		mx.Log.Printf("%T action dispatched\n", mx.Action)
-		return mx.addClientActions(clientShutdown)
-	default:
-	}
-	return mx.State
+type rsBuildRes struct {
+	ActionType
+	issues IssueSet
 }
 
-func (r restartSupport) viewSaved(mx *Ctx) *State {
-	go r.prepRestart(mx)
-	return mx.State
+type restartSupport struct {
+	issues IssueSet
+}
+
+func (r *restartSupport) Reduce(mx *Ctx) *State {
+	st := mx.State
+	switch act := mx.Action.(type) {
+	case ViewSaved:
+		go r.prepRestart(mx)
+	case Restart:
+		mx.Log.Printf("%T action dispatched\n", mx.Action)
+		st = mx.addClientActions(clientRestart)
+	case Shutdown:
+		mx.Log.Printf("%T action dispatched\n", mx.Action)
+		st = mx.addClientActions(clientShutdown)
+	case rsBuildRes:
+		r.issues = act.issues
+	}
+	return st.AddIssues(r.issues...)
 }
 
 func (_ restartSupport) prepRestart(mx *Ctx) {
@@ -68,11 +72,22 @@ func (_ restartSupport) prepRestart(mx *Ctx) {
 	cmd.Dir = mx.View.Dir()
 	cmd.Env = mx.Env.Environ()
 	out, err := cmd.CombinedOutput()
+
+	iw := &IssueWriter{
+		Dir:      mx.View.Dir(),
+		Patterns: CommonPatterns,
+		Base:     Issue{Label: "Mg/RestartSupport"},
+	}
+	iw.Write(out)
+	iw.Flush()
+	res := rsBuildRes{issues: iw.Issues()}
+
 	msg := "telling margo to restart after " + mx.View.Filename() + " was saved"
-	if err == nil {
+	if err == nil && len(res.issues) == 0 {
 		mx.Log.Println(msg)
 		mx.Store.Dispatch(Restart{})
 	} else {
 		mx.Log.Printf("not %s: go test failed: %s\n%s\n", msg, err, out)
+		mx.Store.Dispatch(res)
 	}
 }
