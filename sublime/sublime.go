@@ -1,12 +1,16 @@
 package sublime
 
 import (
-	"margo.sh/mgcli"
+	"bytes"
 	"fmt"
 	"github.com/urfave/cli"
 	"go/build"
+	"io/ioutil"
+	"margo.sh/mg"
+	"margo.sh/mgcli"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -20,6 +24,8 @@ var (
 		SkipArgReorder:  true,
 		Action:          mgcli.Action(mainAction),
 	}
+
+	logger = mg.NewLogger(os.Stderr)
 )
 
 type cmdHelper struct {
@@ -47,7 +53,9 @@ func (c cmdHelper) run() error {
 func mainAction(c *cli.Context) error {
 	args := c.Args()
 	tags := "margo"
-	if extensionPkgExists() {
+	pkg := extensionPkg()
+	if pkg != nil {
+		fixExtPkg(pkg)
 		tags = "margo margo_extension"
 	}
 	var env []string
@@ -99,7 +107,47 @@ func goInstallAgent(gp string, tags string) error {
 	}.run()
 }
 
-func extensionPkgExists() bool {
-	_, err := build.Import("margo", "", 0)
-	return err == nil
+func extensionPkg() *build.Package {
+	pkg, err := build.Import("margo", "", 0)
+	if err != nil || len(pkg.GoFiles) == 0 {
+		return nil
+	}
+	return pkg
+}
+
+func fixExtPkg(pkg *build.Package) {
+	for _, fn := range pkg.GoFiles {
+		fixExtFile(filepath.Join(pkg.Dir, fn))
+	}
+}
+
+func fixExtFile(fn string) {
+	p, err := ioutil.ReadFile(fn)
+	if err != nil {
+		logger.Println("fixExtFile:", err)
+		return
+	}
+
+	from := `disposa.blue/margo`
+	to := `margo.sh`
+	q := bytes.Replace(p, []byte(from), []byte(to), -1)
+	if bytes.Equal(p, q) {
+		return
+	}
+
+	bak := fn + ".~mgfix~.bak"
+	errOk := func(err error) string {
+		if err != nil {
+			return err.Error()
+		}
+		return "ok"
+	}
+
+	logger.Printf("mgfix %s: replace `%s` -> `%s`\n", fn, from, to)
+	err = os.Rename(fn, bak)
+	logger.Printf("mgfix %s: rename -> `%s`: %s\n", fn, bak, errOk(err))
+	if err == nil {
+		err := ioutil.WriteFile(fn, q, 0644)
+		logger.Printf("mgfix %s: saving: %s\n", fn, errOk(err))
+	}
 }

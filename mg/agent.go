@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"io"
-	"log"
 	"os"
 	"sort"
 	"strings"
@@ -202,10 +201,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	ag.stdin = &LockedReadCloser{ReadCloser: ag.stdin}
 	ag.stdout = &LockedWriteCloser{WriteCloser: ag.stdout}
 	ag.stderr = &LockedWriteCloser{WriteCloser: ag.stderr}
-	ag.Log = &Logger{
-		Logger: log.New(ag.stderr, "", log.Lshortfile),
-		Dbg:    log.New(ag.stderr, "DBG: ", log.Lshortfile),
-	}
+	ag.Log = NewLogger(ag.stderr)
 	ag.Store = newStore(ag, ag.listener).
 		Before(defaultReducers.before...).
 		Use(defaultReducers.use...).
