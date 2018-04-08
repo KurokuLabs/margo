@@ -65,6 +65,7 @@ type AgentConfig struct {
 
 type agentReqAction struct {
 	Name string
+	Data codec.Raw
 }
 
 type agentReq struct {
@@ -161,11 +162,11 @@ func (ag *Agent) communicate() error {
 	return nil
 }
 
-func (ag *Agent) createAction(name string) Action {
-	if f := actionCreators[name]; f != nil {
-		return f()
+func (ag *Agent) createAction(ra agentReqAction, h codec.Handle) (Action, error) {
+	if f := actionCreators[ra.Name]; f != nil {
+		return f(h, ra)
 	}
-	return nil
+	return nil, fmt.Errorf("Unknown action: %s", ra.Name)
 }
 
 func (ag *Agent) listener(st *State) {
