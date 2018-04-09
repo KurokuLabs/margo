@@ -126,8 +126,7 @@ func (sto *Store) State() *State {
 }
 
 func (sto *Store) prepState(st *State) *State {
-	st = st.Copy()
-	st.EphemeralState = EphemeralState{}
+	st = st.new()
 	if sto.cfg != nil {
 		st.Config = sto.cfg
 	}
@@ -138,7 +137,7 @@ func newStore(ag *Agent, l Listener) *Store {
 	sto := &Store{
 		readyCh:  make(chan struct{}),
 		listener: l,
-		state:    NewState(),
+		state:    newState(),
 		ag:       ag,
 	}
 	sto.cache.m = map[interface{}]interface{}{}
