@@ -49,12 +49,12 @@ type actionCreator func(codec.Handle, agentReqAction) (Action, error)
 
 type ActionType struct{}
 
-func (act ActionType) Type() ActionType {
+func (act ActionType) Action() ActionType {
 	return act
 }
 
 type Action interface {
-	Type() ActionType
+	Action() ActionType
 }
 
 var Render Action = nil
