@@ -42,6 +42,14 @@ var (
 		"ViewSaved": func(codec.Handle, agentReqAction) (Action, error) {
 			return ViewSaved{}, nil
 		},
+		"RunCmd": func(h codec.Handle, a agentReqAction) (Action, error) {
+			act := RunCmd{}
+			err := codec.NewDecoderBytes(a.Data, h).Decode(&act)
+			return act, err
+		},
+		"QueryUserCmds": func(h codec.Handle, a agentReqAction) (Action, error) {
+			return QueryUserCmds{}, nil
+		},
 	}
 )
 

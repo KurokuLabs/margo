@@ -212,6 +212,8 @@ type State struct {
 	Tooltips      []Tooltip
 	Issues        IssueSet
 	clientActions []clientActionType
+	BuiltinCmds   BultinCmdList
+	UserCmds      []UserCmd
 }
 
 func newState() *State {
@@ -292,6 +294,24 @@ func (st *State) AddIssues(l ...Issue) *State {
 	}
 	return st.Copy(func(st *State) {
 		st.Issues = st.Issues.Add(l...)
+	})
+}
+
+func (st *State) AddBuiltinCmds(l ...BultinCmd) *State {
+	if len(l) == 0 {
+		return st
+	}
+	return st.Copy(func(st *State) {
+		st.BuiltinCmds = append(st.BuiltinCmds[:len(st.BuiltinCmds):len(st.BuiltinCmds)], l...)
+	})
+}
+
+func (st *State) AddUserCmds(l ...UserCmd) *State {
+	if len(l) == 0 {
+		return st
+	}
+	return st.Copy(func(st *State) {
+		st.UserCmds = append(st.UserCmds[:len(st.UserCmds):len(st.UserCmds)], l...)
 	})
 }
 
