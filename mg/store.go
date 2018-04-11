@@ -31,6 +31,8 @@ func (sr storeReducers) Copy(updaters ...func(*storeReducers)) storeReducers {
 }
 
 type Store struct {
+	KVMap
+
 	mu        sync.Mutex
 	readyCh   chan struct{}
 	state     *State
@@ -47,7 +49,6 @@ type Store struct {
 		sync.RWMutex
 		vName string
 		vHash string
-		m     map[interface{}]interface{}
 	}
 }
 
@@ -140,7 +141,6 @@ func newStore(ag *Agent, l Listener) *Store {
 		state:    newState(),
 		ag:       ag,
 	}
-	sto.cache.m = map[interface{}]interface{}{}
 	sto.tasks = newTaskTracker(sto.Dispatch)
 	sto.After(sto.tasks)
 	return sto
@@ -214,28 +214,7 @@ func (sto *Store) initCache(v *View) {
 		return
 	}
 
-	cc.m = map[interface{}]interface{}{}
+	sto.KVMap.Clear()
 	cc.vHash = v.Hash
 	cc.vName = v.Name
-}
-
-func (sto *Store) Put(k interface{}, v interface{}) {
-	sto.cache.Lock()
-	defer sto.cache.Unlock()
-
-	sto.cache.m[k] = v
-}
-
-func (sto *Store) Get(k interface{}) interface{} {
-	sto.cache.RLock()
-	defer sto.cache.RUnlock()
-
-	return sto.cache.m[k]
-}
-
-func (sto *Store) Del(k interface{}) {
-	sto.cache.Lock()
-	defer sto.cache.Unlock()
-
-	delete(sto.cache.m, k)
 }
