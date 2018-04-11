@@ -97,3 +97,15 @@ func (m *KVMap) Clear() {
 
 	m.vals = map[interface{}]interface{}{}
 }
+
+// Values returns a copy of all values stored
+func (m *KVMap) Values() map[interface{}]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	vals := make(map[interface{}]interface{}, len(m.vals))
+	for k, v := range m.vals {
+		vals[k] = v
+	}
+	return vals
+}
