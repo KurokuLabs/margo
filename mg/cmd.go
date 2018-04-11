@@ -133,12 +133,16 @@ func (p *Proc) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if err := p.cmd.Start(); err != nil {
+		return err
+	}
+
 	p.task = p.bx.Begin(Task{
 		Title:  fmt.Sprintf("RunCmd `%s`", mgutil.QuoteCmd(p.bx.Name, p.bx.Args...)),
 		Cancel: p.Cancel,
 	})
 	go p.dispatchOutputLoop()
-	return p.cmd.Start()
+	return nil
 }
 
 func (p *Proc) dispatchOutput() {
