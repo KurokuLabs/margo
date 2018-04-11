@@ -89,7 +89,7 @@ func (_ restartSupport) prepRestart(mx *Ctx) {
 		mx.Log.Println(msg)
 		mx.Store.Dispatch(Restart{})
 	} else {
-		mx.Log.Printf("not %s: go test failed: %s\n%s\n", msg, err, out)
+		mx.Log.Printf("not %s: `margo.sh build %s` failed: error: %v\n%s\n", msg, mx.AgentName(), err, out)
 		mx.Store.Dispatch(res)
 	}
 }
