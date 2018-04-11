@@ -12,12 +12,13 @@ var (
 		before, use, after []Reducer
 	}{
 		before: []Reducer{
-			&restartSupport{},
+			&issueKeySupport{},
 			Builtins,
 		},
 		after: []Reducer{
-			issueSupport{},
+			issueStatusSupport{},
 			&cmdSupport{},
+			&restartSupport{},
 		},
 	}
 )
