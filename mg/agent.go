@@ -74,8 +74,8 @@ type agentReq struct {
 	Props   clientProps
 }
 
-func newAgentReq() *agentReq {
-	return &agentReq{Props: makeClientProps()}
+func newAgentReq(kvs KVStore) *agentReq {
+	return &agentReq{Props: makeClientProps(kvs)}
 }
 
 func (rq *agentReq) finalize(ag *Agent) {
@@ -148,7 +148,7 @@ func (ag *Agent) communicate() error {
 	ag.Store.ready()
 
 	for {
-		rq := newAgentReq()
+		rq := newAgentReq(ag.Store)
 		if err := ag.dec.Decode(rq); err != nil {
 			if err == io.EOF {
 				return nil

@@ -1,6 +1,9 @@
 package mg
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -100,11 +103,33 @@ func (sto *Store) syncRqAct(ag *Agent, props clientProps, ra agentReqAction) (*S
 	mx, done := newCtx(sto.ag, sto.state, act, sto)
 	defer close(done)
 
-	// TODO: add support for unpacking Action.Data
+	mx = mx.Copy(func(mx *Ctx) {
+		st := sto.prepState(mx.State)
+		st.Editor = props.Editor.EditorProps
+		if props.Env != nil {
+			st.Env = props.Env
+		}
 
-	mx = props.updateCtx(mx)
-	sto.initCache(mx.View)
-	mx.State = sto.prepState(mx.State)
+		if props.View != nil {
+			st.View = props.View.Copy(func(v *View) {
+				sto.initCache(v)
+				v.initSrcPos()
+			})
+		}
+
+		osGopath := os.Getenv("GOPATH")
+		fn := st.View.Filename()
+		for _, dir := range strings.Split(osGopath, string(filepath.ListSeparator)) {
+			if IsParentDir(dir, fn) {
+				st.Env = st.Env.Add("GOPATH", osGopath)
+				break
+			}
+		}
+		mx.State = st
+	})
+
+	// sto.initCache(mx.View)
+	// mx.State = sto.prepState(mx.State)
 	return sto.reducers.Reduce(mx), nil
 }
 
@@ -138,7 +163,7 @@ func newStore(ag *Agent, l Listener) *Store {
 	sto := &Store{
 		readyCh:  make(chan struct{}),
 		listener: l,
-		state:    newState(),
+		state:    newState(ag.Store),
 		ag:       ag,
 	}
 	sto.tasks = newTaskTracker(sto.Dispatch)
