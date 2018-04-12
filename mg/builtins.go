@@ -169,7 +169,7 @@ func (bx *BultinCmdCtx) StartProc() (*Proc, error) {
 	cmd.Env = bx.Env.Environ()
 	cmd.Stdout = bx.Output
 	cmd.Stderr = bx.Output
-	cmd.SysProcAttr = defaultSysProcAttr
+	cmd.SysProcAttr = pgSysProcAttr
 
 	p := &Proc{
 		done: make(chan struct{}),

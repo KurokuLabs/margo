@@ -61,18 +61,78 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
+	st := mx.State
 	switch mx.Action.(type) {
 	case Started:
 		tr.start()
+	case Shutdown:
+		for _, t := range tr.tickets {
+			t.cancel()
+		}
+	case RunCmd:
+		st = st.AddBuiltinCmds(BultinCmd{
+			Name: ".kill",
+			Desc: "List and cancel active tasks",
+			Run:  tr.killBuiltin,
+		})
 	case taskTick:
 		if len(tr.tickets) != 0 {
 			tr.resetTimer()
 		}
 	}
 	if s := tr.status(); s != "" {
-		return mx.AddStatus(s)
+		st = st.AddStatus(s)
 	}
-	return mx.State
+	return st
+}
+
+// Cancel cancels the task tid.
+// true is returned if the task exists and was canceled
+func (tr *taskTracker) Cancel(tid string) bool {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	return tr.cancel(tid)
+}
+
+func (tr *taskTracker) cancel(tid string) bool {
+	for _, t := range tr.tickets {
+		if t.ID == tid {
+			t.Cancel()
+			return t.Cancellable()
+		}
+	}
+	return false
+}
+
+func (tr *taskTracker) killBuiltin(bx *BultinCmdCtx) *State {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	defer bx.Close()
+	if len(bx.Args) == 0 {
+		tr.listAll(bx)
+	} else {
+		tr.killAll(bx)
+	}
+
+	return bx.State
+}
+
+func (tr *taskTracker) killAll(bx *BultinCmdCtx) {
+	buf := &bytes.Buffer{}
+	for _, tid := range bx.Args {
+		fmt.Fprintf(buf, "%s: %v\n", tid, tr.cancel(tid))
+	}
+	bx.Output.Write(buf.Bytes())
+}
+
+func (tr *taskTracker) listAll(bx *BultinCmdCtx) {
+	buf := &bytes.Buffer{}
+	for _, t := range tr.tickets {
+		fmt.Fprintf(buf, "ID: %s, Cancel: %v, Duration: %s, Title: %s\n", t.ID, t.Cancellable(), time.Since(t.Start), t.Title)
+	}
+	bx.Output.Write(buf.Bytes())
 }
 
 func (tr *taskTracker) status() string {

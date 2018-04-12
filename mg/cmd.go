@@ -8,12 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
-)
-
-var (
-	defaultSysProcAttr *syscall.SysProcAttr
 )
 
 type CmdOutputWriter struct {
@@ -123,9 +118,7 @@ func (p *Proc) Cancel() {
 	select {
 	case <-p.done:
 	default:
-		if p := p.cmd.Process; p != nil {
-			p.Signal(os.Interrupt)
-		}
+		pgKill(p.cmd.Process)
 	}
 }
 
