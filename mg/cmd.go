@@ -97,10 +97,11 @@ func (cs *cmdSupport) cmdOutput(mx *Ctx, out CmdOutput) *State {
 type RunCmd struct {
 	ActionType
 
-	Fd    string
-	Input bool
-	Name  string
-	Args  []string
+	Fd       string
+	Input    bool
+	Name     string
+	Args     []string
+	CancelID string
 }
 
 type Proc struct {
@@ -109,6 +110,7 @@ type Proc struct {
 	done chan struct{}
 	cmd  *exec.Cmd
 	task *TaskTicket
+	cid  string
 }
 
 func (p *Proc) Cancel() {
@@ -131,8 +133,9 @@ func (p *Proc) start() error {
 	}
 
 	p.task = p.bx.Begin(Task{
-		Title:  fmt.Sprintf("RunCmd `%s`", mgutil.QuoteCmd(p.bx.Name, p.bx.Args...)),
-		Cancel: p.Cancel,
+		CancelID: p.cid,
+		Title:    fmt.Sprintf("Proc`%s`", mgutil.QuoteCmd(p.bx.Name, p.bx.Args...)),
+		Cancel:   p.Cancel,
 	})
 	go p.dispatchOutputLoop()
 	return nil
