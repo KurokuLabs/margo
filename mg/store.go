@@ -105,32 +105,40 @@ func (sto *Store) syncRqAct(ag *Agent, props clientProps, ra agentReqAction) (*S
 
 	mx = mx.Copy(func(mx *Ctx) {
 		st := sto.prepState(mx.State)
-		st.Editor = props.Editor.EditorProps
-		if props.Env != nil {
-			st.Env = props.Env
+
+		if ep := props.Editor.EditorProps; ep.Name != "" {
+			st.Editor = ep
 		}
 
-		if props.View != nil {
+		if len(props.Env) != 0 {
+			st.Env = props.Env
+		}
+		st.Env = sto.autoSwitchInternalGOPATH(st.View, st.Env)
+
+		if props.View != nil && props.View.Name != "" {
 			st.View = props.View.Copy(func(v *View) {
 				sto.initCache(v)
 				v.initSrcPos()
 			})
 		}
 
-		osGopath := os.Getenv("GOPATH")
-		fn := st.View.Filename()
-		for _, dir := range strings.Split(osGopath, string(filepath.ListSeparator)) {
-			if IsParentDir(dir, fn) {
-				st.Env = st.Env.Add("GOPATH", osGopath)
-				break
-			}
-		}
 		mx.State = st
 	})
 
-	// sto.initCache(mx.View)
-	// mx.State = sto.prepState(mx.State)
 	return sto.reducers.Reduce(mx), nil
+}
+
+// autoSwitchInternalGOPATH automatically changes env[GOPATH] to the internal GOPATH
+// if view.Filename is a child of one of the internal GOPATH directories
+func (sto *Store) autoSwitchInternalGOPATH(v *View, env EnvMap) EnvMap {
+	osGopath := os.Getenv("GOPATH")
+	fn := v.Filename()
+	for _, dir := range strings.Split(osGopath, string(filepath.ListSeparator)) {
+		if IsParentDir(dir, fn) {
+			return env.Add("GOPATH", osGopath)
+		}
+	}
+	return env
 }
 
 func (sto *Store) updateState(st *State, callListener bool) *State {
