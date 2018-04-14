@@ -67,7 +67,7 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 		tr.start()
 	case Shutdown:
 		for _, t := range tr.tickets {
-			t.cancel()
+			t.Cancel()
 		}
 	case RunCmd:
 		st = st.AddBuiltinCmds(BultinCmd{
@@ -97,7 +97,7 @@ func (tr *taskTracker) Cancel(tid string) bool {
 
 func (tr *taskTracker) cancel(tid string) bool {
 	for _, t := range tr.tickets {
-		if t.ID == tid {
+		if t.ID == tid || t.CancelID == tid {
 			t.Cancel()
 			return t.Cancellable()
 		}
@@ -109,7 +109,7 @@ func (tr *taskTracker) killBuiltin(bx *BultinCmdCtx) *State {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	defer bx.Close()
+	defer bx.Output.Close()
 	if len(bx.Args) == 0 {
 		tr.listAll(bx)
 	} else {
@@ -130,7 +130,19 @@ func (tr *taskTracker) killAll(bx *BultinCmdCtx) {
 func (tr *taskTracker) listAll(bx *BultinCmdCtx) {
 	buf := &bytes.Buffer{}
 	for _, t := range tr.tickets {
-		fmt.Fprintf(buf, "ID: %s, Cancel: %v, Duration: %s, Title: %s\n", t.ID, t.Cancellable(), time.Since(t.Start), t.Title)
+		id := t.ID
+		if t.CancelID != "" {
+			id += "|" + t.CancelID
+		}
+
+		dur := time.Since(t.Start)
+		if dur < time.Second {
+			dur = dur.Round(time.Millisecond)
+		} else {
+			dur = dur.Round(time.Second)
+		}
+
+		fmt.Fprintf(buf, "ID: %s, Dur: %s, Title: %s\n", id, dur, t.Title)
 	}
 	bx.Output.Write(buf.Bytes())
 }
