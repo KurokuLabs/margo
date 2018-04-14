@@ -66,19 +66,30 @@ func (v *View) Filename() string {
 	return filepath.Join(v.Wd, v.Name)
 }
 
-func (v *View) key(hash string) interface{} {
+func (v *View) key() interface{} {
 	type Key struct{ Hash string }
-	return Key{hash}
+	return Key{v.Hash}
+}
+
+func (v *View) src() (src []byte, ok bool) {
+	src = v.Src
+	if len(src) != 0 {
+		return src, true
+	}
+
+	if v.kvs != nil {
+		src, _ = v.kvs.Get(v.key()).([]byte)
+	}
+
+	if v.Path == "" || v.Dirty || len(src) != 0 {
+		return src, true
+	}
+
+	return nil, false
 }
 
 func (v *View) ReadAll() ([]byte, error) {
-	key := v.key(v.Hash)
-	src := v.Src
-	if len(src) == 0 && v.kvs != nil {
-		src, _ = v.kvs.Get(key).([]byte)
-	}
-
-	if v.Dirty || len(src) != 0 {
+	if src, ok := v.src(); ok {
 		return src, nil
 	}
 
@@ -88,9 +99,9 @@ func (v *View) ReadAll() ([]byte, error) {
 	}
 	defer r.Close()
 
-	src, err = ioutil.ReadAll(r)
+	src, err := ioutil.ReadAll(r)
 	if err == nil && v.kvs != nil {
-		v.kvs.Put(key, src)
+		v.kvs.Put(v.key(), src)
 	}
 
 	return src, err
@@ -100,9 +111,9 @@ func (v *View) Valid() bool {
 	return v.Name != ""
 }
 
-func (v *View) Open() (io.ReadCloser, error) {
-	if v.Dirty || len(v.Src) != 0 {
-		return ioutil.NopCloser(bytes.NewReader(v.Src)), nil
+func (v *View) Open() (r io.ReadCloser, err error) {
+	if src, ok := v.src(); ok {
+		return ioutil.NopCloser(bytes.NewReader(src)), nil
 	}
 
 	if v.Path == "" {
@@ -121,7 +132,7 @@ func (v *View) initSrcPos() {
 	v.Src = src
 	v.Pos = BytePos(src, v.Pos)
 	v.Hash = SrcHash(src)
-	v.kvs.Put(v.key(v.Hash), src)
+	v.kvs.Put(v.key(), src)
 }
 
 func (v *View) SetSrc(s []byte) *View {
