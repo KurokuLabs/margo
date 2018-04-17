@@ -3,9 +3,10 @@ package mg
 import (
 	"bytes"
 	"fmt"
-	"margo.sh/mgutil"
 	"os"
 	"sort"
+
+	"margo.sh/mgutil"
 )
 
 var (
@@ -31,14 +32,19 @@ func (bcl BultinCmdList) Lookup(name string) (cmd BultinCmd, found bool) {
 	panic("internal error: the `.exec` BuiltinCmd is not defined")
 }
 
+// BuiltinCmds is used to add a list of predefined commands to the state. It
+// implements Reducer interface.
 type BuiltinCmds struct{}
 
+// ExecCmd spawns the given command in a goroutine and returns its State right
+// away. If the name is `.exec`, it will use its first argument as the `Name`
+// and the rest of the args for the `Args`.
 func (bc BuiltinCmds) ExecCmd(bx *BultinCmdCtx) *State {
-	go bc.execCmd(bx)
+	go execCmd(bx)
 	return bx.State
 }
 
-func (bc BuiltinCmds) execCmd(bx *BultinCmdCtx) {
+func execCmd(bx *BultinCmdCtx) {
 	defer bx.Output.Close()
 
 	if bx.Name == ".exec" {
@@ -54,7 +60,10 @@ func (bc BuiltinCmds) execCmd(bx *BultinCmdCtx) {
 	bx.RunProc()
 }
 
-func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
+// TypeCmd tries to find the bx.Args in commands, and writes the description of
+// the commands into provided buffer. If the Args is empty, it uses all
+// available commands.
+func TypeCmd(bx *BultinCmdCtx) *State {
 	cmds := bx.BuiltinCmds
 	names := bx.Args
 	if len(names) == 0 {
@@ -74,7 +83,7 @@ func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
 	return bx.State
 }
 
-func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
+func EnvCmd(bx *BultinCmdCtx) *State {
 	buf := &bytes.Buffer{}
 	names := bx.Args
 	if len(names) == 0 {
@@ -92,11 +101,12 @@ func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
 	return bx.State
 }
 
+// Commands returns a list of predefined commands.
 func (bc BuiltinCmds) Commands() BultinCmdList {
 	return []BultinCmd{
-		BultinCmd{Name: ".env", Desc: "List env vars", Run: bc.EnvCmd},
+		BultinCmd{Name: ".env", Desc: "List env vars", Run: EnvCmd},
 		BultinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: bc.ExecCmd},
-		BultinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: bc.TypeCmd},
+		BultinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: TypeCmd},
 	}
 }
 
