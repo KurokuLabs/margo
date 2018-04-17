@@ -13,3 +13,5 @@ This repo is made public at this time solely to make it easier to integrate with
 
 It is under very active experimental development and code may be broken or deleted at any time.
 
+We appreciate your contributions! Please refer to [this](./CONTRIBUTE.md)
+document if you would like to help developing this library.

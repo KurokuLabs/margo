@@ -3,12 +3,13 @@ package mg
 import (
 	"bufio"
 	"fmt"
-	"github.com/ugorji/go/codec"
 	"io"
 	"os"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/ugorji/go/codec"
 )
 
 var (
@@ -145,6 +146,7 @@ type Agent struct {
 	closed bool
 }
 
+// Run starts the Agent's event loop. It returns immediately on the first error.
 func (ag *Agent) Run() error {
 	defer ag.shutdown()
 	return ag.communicate()
@@ -204,6 +206,12 @@ func (ag *Agent) send(res agentRes) error {
 	return ag.enc.Encode(res.finalize())
 }
 
+// shutdown sequence:
+// * stop incoming requests
+// * wait for all reqs to complete
+// * tell reducers we're shutting down
+// * stop outgoing responses
+// * tell the world we're done
 func (ag *Agent) shutdown() {
 	sd := &ag.sd
 	sd.mu.Lock()
@@ -214,21 +222,17 @@ func (ag *Agent) shutdown() {
 	}
 	sd.closed = true
 
-	// shutdown sequence:
-	// * stop incoming requests
-	// * wait for all reqs to complete
-	// * tell reducers we're shutting down
-	// * stop outgoing responses
-	// * tell the world we're done
-
 	// defers because we want *some* guarantee that all these steps will be taken
 	defer close(sd.done)
 	defer ag.stdout.Close()
+	defer ag.stderr.Close()
 	defer ag.Store.dispatch(Shutdown{})
 	defer ag.wg.Wait()
 	defer ag.stdin.Close()
 }
 
+// NewAgent returns an error if an invalid codec has been passed. See
+// AgentConfig.Codec for codecs.
 func NewAgent(cfg AgentConfig) (*Agent, error) {
 	done := make(chan struct{})
 	ag := &Agent{
@@ -265,7 +269,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	}
 
 	if ag.handle == nil {
-		return ag, fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
+		return nil, fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
 	}
 	ag.encWr = bufio.NewWriter(ag.stdout)
 	ag.enc = codec.NewEncoder(ag.encWr, ag.handle)
@@ -274,6 +278,9 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	return ag, nil
 }
 
+// Args returns a new instance of Args each time it is called. Please note that
+// the Store and Log are pointed to current Agent's properties and should not be
+// replaced.
 func (ag *Agent) Args() Args {
 	return Args{
 		Store: ag.Store,

@@ -3,14 +3,15 @@ package mg
 import (
 	"context"
 	"fmt"
-	"github.com/ugorji/go/codec"
 	"go/build"
-	"margo.sh/misc/pprof/pprofdo"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/ugorji/go/codec"
+	"margo.sh/misc/pprof/pprofdo"
 )
 
 var (
@@ -34,7 +35,7 @@ type Ctx struct {
 	handle codec.Handle
 }
 
-func (_ *Ctx) Deadline() (time.Time, bool) {
+func (*Ctx) Deadline() (time.Time, bool) {
 	return time.Time{}, false
 }
 
@@ -42,7 +43,7 @@ func (mx *Ctx) Done() <-chan struct{} {
 	return mx.DoneC
 }
 
-func (_ *Ctx) Err() error {
+func (*Ctx) Err() error {
 	return nil
 }
 
@@ -124,7 +125,7 @@ type ReducerList []Reducer
 func (rl ReducerList) ReduceCtx(mx *Ctx) *Ctx {
 	for _, r := range rl {
 		var st *State
-		pprofdo.Do(mx, rl.labels(r), func(_ context.Context) {
+		pprofdo.Do(mx, rl.labels(r), func(context.Context) {
 			st = r.Reduce(mx)
 		})
 		mx = mx.Copy(func(mx *Ctx) {
