@@ -2,6 +2,8 @@ package mg_test
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 )
 
 func TestBultinCmdList_Lookup(t *testing.T) {
+	t.Parallel()
 	exec := func() mg.BultinCmd {
 		r, _ := mg.Builtins.Commands().Lookup(".exec")
 		return r
@@ -46,6 +49,7 @@ func TestBultinCmdList_Lookup(t *testing.T) {
 
 // tests when the Args is empty, it should pick up the available BuiltinCmd(s).
 func TestTypeCmdEmptyArgs(t *testing.T) {
+	t.Parallel()
 	item1 := mg.BultinCmd{Name: "this name", Desc: "this description"}
 	item2 := mg.BultinCmd{Name: "another one", Desc: "should appear too"}
 	buf := new(bytes.Buffer)
@@ -75,25 +79,32 @@ func TestTypeCmdEmptyArgs(t *testing.T) {
 	}
 }
 
-// tests when command is found, it should choose it.
-func TestTypeCmdLookupCmd(t *testing.T) {
-	item1 := mg.BultinCmd{Name: "this name", Desc: "this description"}
-	item2 := mg.BultinCmd{Name: "another one", Desc: "should not appear"}
-	buf := new(bytes.Buffer)
-	input := &mg.BultinCmdCtx{
-		Ctx: &mg.Ctx{
-			State: &mg.State{
-				BuiltinCmds: mg.BultinCmdList{item1, item2},
-			},
+func buildBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, buf io.Writer) *mg.BultinCmdCtx {
+	ctx := &mg.Ctx{
+		State: &mg.State{
+			BuiltinCmds: cmds,
 		},
+	}
+	ctx.Env = envMap
+	return &mg.BultinCmdCtx{
+		Ctx: ctx,
 		Output: &mg.CmdOutputWriter{
 			Writer:   buf,
 			Dispatch: nil,
 		},
 		RunCmd: mg.RunCmd{
-			Args: []string{item2.Name},
+			Args: args,
 		},
 	}
+}
+
+// tests when command is found, it should choose it.
+func TestTypeCmdLookupCmd(t *testing.T) {
+	t.Parallel()
+	item1 := mg.BultinCmd{Name: "this name", Desc: "this description"}
+	item2 := mg.BultinCmd{Name: "another one", Desc: "should not appear"}
+	buf := new(bytes.Buffer)
+	input := buildBultinCmdCtx(mg.BultinCmdList{item1, item2}, []string{item2.Name}, nil, buf)
 
 	if got := mg.TypeCmd(input); !reflect.DeepEqual(got, input.State) {
 		t.Errorf("TypeCmd() = %v, want %v", got, input.State)
@@ -110,5 +121,84 @@ func TestTypeCmdLookupCmd(t *testing.T) {
 	}
 	if !strings.Contains(out, item2.Name) {
 		t.Errorf("buf.String() = (%s); want (%s) in it", out, item2.Name)
+	}
+}
+
+type envPair struct {
+	key   string
+	value string
+}
+
+func setupEnvCmd(t *testing.T) ([]envPair, []mg.BultinCmd, func()) {
+	envs := []envPair{
+		{"thiskey", "the value"},
+		{"anotherkey", "another value"},
+	}
+	items := make([]mg.BultinCmd, len(envs))
+	for i, e := range envs {
+		if err := os.Setenv(e.key, e.value); err != nil {
+			t.Fatalf("cannot set environment values: %v", err)
+		}
+		items[i] = mg.BultinCmd{Name: e.key, Desc: "doesn't matter"}
+	}
+	cleanup := func() {
+		for _, e := range envs {
+			os.Unsetenv(e.key)
+		}
+	}
+	return envs, items, cleanup
+}
+
+func TestEnvCmd(t *testing.T) {
+	t.Parallel()
+	envs, items, cleanup := setupEnvCmd(t)
+	defer cleanup()
+
+	tcs := []struct {
+		name     string
+		cmds     mg.BultinCmdList
+		args     []string
+		envs     mg.EnvMap
+		wantEnvs []envPair
+	}{
+		{"no cmd no env", mg.BultinCmdList{}, []string{}, nil, nil},
+		{
+			"no cmd with env",
+			mg.BultinCmdList{},
+			[]string{},
+			mg.EnvMap{"tAlbt": "gRuVbi", "wILHI": "XOmsUdw"},
+			[]envPair{{"tAlbt", "gRuVbi"}, {"wILHI", "XOmsUdw"}},
+		},
+		{
+			"one env pair", mg.BultinCmdList{items[0]},
+			[]string{items[0].Name},
+			nil,
+			[]envPair{envs[0]},
+		},
+		{
+			"multiple env pairs",
+			mg.BultinCmdList{items[0], items[1]},
+			[]string{items[0].Name, items[1].Name},
+			nil,
+			[]envPair{envs[0], envs[1]},
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			input := buildBultinCmdCtx(tc.cmds, tc.args, tc.envs, buf)
+			if got := mg.EnvCmd(input); got == nil {
+				t.Error("EnvCmd() = (nil); want (*State)")
+			}
+			out := buf.String()
+			for _, e := range tc.wantEnvs {
+				if !strings.Contains(out, e.key) {
+					t.Errorf("buf.String() = (%s); want (%s) in it", out, e.key)
+				}
+				if !strings.Contains(out, e.value) {
+					t.Errorf("buf.String() = (%s); want (%s) in it", out, e.value)
+				}
+			}
+		})
 	}
 }

@@ -83,12 +83,14 @@ func TypeCmd(bx *BultinCmdCtx) *State {
 	return bx.State
 }
 
+// EnvCmd finds all environment variables corresponding to bx.Args into the
+// bx.Output buffer.
 func EnvCmd(bx *BultinCmdCtx) *State {
 	buf := &bytes.Buffer{}
 	names := bx.Args
 	if len(names) == 0 {
 		names = make([]string, 0, len(bx.Env))
-		for k, _ := range bx.Env {
+		for k := range bx.Env {
 			names = append(names, k)
 		}
 		sort.Strings(names)
