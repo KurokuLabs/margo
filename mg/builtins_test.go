@@ -202,3 +202,50 @@ func TestEnvCmd(t *testing.T) {
 		})
 	}
 }
+
+func TestBuiltinCmdsReduce(t *testing.T) {
+	t.Parallel()
+	isIn := func(cmd mg.BultinCmd, haystack mg.BultinCmdList) bool {
+		for _, h := range haystack {
+			if h.Name == cmd.Name && h.Desc == cmd.Desc {
+				return true
+			}
+		}
+		return false
+	}
+
+	item := mg.BultinCmd{Name: "qNgEYow", Desc: "YKjYxqMnt"}
+	ctx := &mg.Ctx{
+		State: &mg.State{
+			BuiltinCmds: mg.BultinCmdList{item},
+		},
+	}
+
+	bc := mg.BuiltinCmds{}
+	state := bc.Reduce(ctx)
+	if state == nil {
+		t.Fatal("bc.Reduce() = nil, want *State")
+	}
+	for _, cmd := range bc.Commands() {
+		if isIn(cmd, state.BuiltinCmds) {
+			t.Errorf("didn't want %v in %v", cmd, bc.Commands())
+		}
+	}
+	if !isIn(item, state.BuiltinCmds) {
+		t.Errorf("want %v in %v", item, bc.Commands())
+	}
+
+	ctx.Action = mg.RunCmd{}
+	state = bc.Reduce(ctx)
+	if state == nil {
+		t.Fatal("bc.Reduce() = nil, want *State")
+	}
+	for _, cmd := range bc.Commands() {
+		if !isIn(cmd, state.BuiltinCmds) {
+			t.Errorf("want %v in %v", cmd, bc.Commands())
+		}
+	}
+	if !isIn(item, state.BuiltinCmds) {
+		t.Errorf("want %v in %v", item, bc.Commands())
+	}
+}

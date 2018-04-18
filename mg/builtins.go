@@ -112,6 +112,8 @@ func (bc BuiltinCmds) Commands() BultinCmdList {
 	}
 }
 
+// Reduce will return a copy of the mx.State while adding the predefined
+// commands to its builtins, if the mx.Action is a RunCmd.
 func (bc BuiltinCmds) Reduce(mx *Ctx) *State {
 	if _, ok := mx.Action.(RunCmd); ok {
 		return mx.State.AddBuiltinCmds(bc.Commands()...)
