@@ -18,8 +18,11 @@ func TestDefaults(t *testing.T) {
 	if err == nil {
 		t.Error("NewAgent() = (nil); want (error)")
 	}
-	if ag != nil {
-		t.Errorf("ag = (%v); want (nil)", ag)
+	if ag == nil {
+		t.Fatal("ag = (nil); want (*Agent)")
+	}
+	if ag.handle != codecHandles[DefaultCodec] {
+		t.Errorf("ag.handle = (%v), want (%v)", ag.handle, codecHandles[DefaultCodec])
 	}
 
 	ag, err = NewAgent(AgentConfig{})

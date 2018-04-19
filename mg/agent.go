@@ -229,8 +229,12 @@ func (ag *Agent) shutdown() {
 	defer ag.stdin.Close()
 }
 
-// NewAgent always returns an *Agent.
+// NewAgent returns a new Agent, initialised using the settings in cfg.
+// If cfg.Codec is invalid (see CodecNames), `DefaultCodec` will be used as the
+// codec and an error returned.
+// An initialised, usable agent object is always returned.
 func NewAgent(cfg AgentConfig) (*Agent, error) {
+	var err error
 	done := make(chan struct{})
 	ag := &Agent{
 		Name:   cfg.AgentName,
@@ -266,13 +270,14 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	}
 
 	if ag.handle == nil {
-		return nil, fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
+		err = fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
+		ag.handle = codecHandles[DefaultCodec]
 	}
 	ag.encWr = bufio.NewWriter(ag.stdout)
 	ag.enc = codec.NewEncoder(ag.encWr, ag.handle)
 	ag.dec = codec.NewDecoder(bufio.NewReader(ag.stdin), ag.handle)
 
-	return ag, nil
+	return ag, err
 }
 
 // Args returns a new copy of agent's Args.
