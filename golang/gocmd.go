@@ -146,7 +146,7 @@ func (gc *GoCmd) playToolTest(gx *goCmdCtx, bld *build.Context, origView *mg.Vie
 
 func (gc *GoCmd) playToolRun(gx *goCmdCtx, bld *build.Context, origView *mg.View) {
 	args := gx.Args
-	exe := filepath.Join(gx.tDir, "margo.play~~"+filepath.Base(gx.tFn)+".exe")
+	exe := filepath.Join(gx.tDir, "margo.play~~"+filepath.Base(origView.Name)+".exe")
 	gx.Name = "go"
 	gx.Args = []string{"build", "-o", exe}
 	gx.View = gx.View.Copy()
