@@ -86,16 +86,13 @@ func buildBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, b
 		},
 	}
 	ctx.Env = envMap
-	return &mg.BultinCmdCtx{
-		Ctx: ctx,
-		Output: &mg.CmdOutputWriter{
-			Writer:   buf,
-			Dispatch: nil,
-		},
-		RunCmd: mg.RunCmd{
-			Args: args,
-		},
+	rc := mg.RunCmd{Args: args}
+	cmd := mg.NewBultinCmdCtx(ctx, rc)
+	cmd.Output = &mg.CmdOutputWriter{
+		Writer:   buf,
+		Dispatch: nil,
 	}
+	return cmd
 }
 
 // tests when command is found, it should choose it.

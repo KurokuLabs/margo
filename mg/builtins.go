@@ -3,10 +3,9 @@ package mg
 import (
 	"bytes"
 	"fmt"
+	"margo.sh/mgutil"
 	"os"
 	"sort"
-
-	"margo.sh/mgutil"
 )
 
 var (
@@ -32,13 +31,10 @@ func (bcl BultinCmdList) Lookup(name string) (cmd BultinCmd, found bool) {
 	panic("internal error: the `.exec` BuiltinCmd is not defined")
 }
 
-// BuiltinCmds is used to add a list of predefined commands to the state. It
-// implements Reducer interface.
+// BuiltinCmds implements various builtin commands.
 type BuiltinCmds struct{}
 
-// ExecCmd spawns the given command in a goroutine and returns its State right
-// away. If the name is `.exec`, it will use its first argument as the `Name`
-// and the rest of the args for the `Args`.
+// ExecCmd implements the `.exec` builtin.
 func (bc BuiltinCmds) ExecCmd(bx *BultinCmdCtx) *State {
 	go execCmd(bx)
 	return bx.State
@@ -90,7 +86,7 @@ func EnvCmd(bx *BultinCmdCtx) *State {
 	names := bx.Args
 	if len(names) == 0 {
 		names = make([]string, 0, len(bx.Env))
-		for k := range bx.Env {
+		for k, _ := range bx.Env {
 			names = append(names, k)
 		}
 		sort.Strings(names)
@@ -112,8 +108,7 @@ func (bc BuiltinCmds) Commands() BultinCmdList {
 	}
 }
 
-// Reduce will return a copy of the mx.State while adding the predefined
-// commands to its builtins, if the mx.Action is a RunCmd.
+// Reduce adds the list of predefined builtins for the RunCmd.
 func (bc BuiltinCmds) Reduce(mx *Ctx) *State {
 	if _, ok := mx.Action.(RunCmd); ok {
 		return mx.State.AddBuiltinCmds(bc.Commands()...)
