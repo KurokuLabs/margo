@@ -144,9 +144,6 @@ func TestAgentShutdown(t *testing.T) {
 	if !nwc.closed {
 		t.Error("nwc.Close() want not called")
 	}
-	if !nerrc.closed {
-		t.Error("nerrc.Close() want not called")
-	}
 	if !ag.sd.closed {
 		t.Error("ag.sd.closed = (true); want (false)")
 	}

@@ -3,15 +3,14 @@ package mg
 import (
 	"context"
 	"fmt"
+	"github.com/ugorji/go/codec"
 	"go/build"
+	"margo.sh/misc/pprof/pprofdo"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/ugorji/go/codec"
-	"margo.sh/misc/pprof/pprofdo"
 )
 
 var (

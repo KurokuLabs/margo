@@ -2,7 +2,6 @@ package margosublime
 
 import (
 	"fmt"
-
 	"github.com/urfave/cli"
 	"margo.sh/mg"
 	"margo.sh/mgcli"

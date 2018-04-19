@@ -3,13 +3,12 @@ package mg
 import (
 	"bufio"
 	"fmt"
+	"github.com/ugorji/go/codec"
 	"io"
 	"os"
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/ugorji/go/codec"
 )
 
 var (
@@ -225,14 +224,12 @@ func (ag *Agent) shutdown() {
 	// defers because we want *some* guarantee that all these steps will be taken
 	defer close(sd.done)
 	defer ag.stdout.Close()
-	defer ag.stderr.Close()
 	defer ag.Store.dispatch(Shutdown{})
 	defer ag.wg.Wait()
 	defer ag.stdin.Close()
 }
 
-// NewAgent returns an error if an invalid codec has been passed. See
-// AgentConfig.Codec for codecs.
+// NewAgent always returns an *Agent.
 func NewAgent(cfg AgentConfig) (*Agent, error) {
 	done := make(chan struct{})
 	ag := &Agent{
@@ -278,9 +275,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	return ag, nil
 }
 
-// Args returns a new instance of Args each time it is called. Please note that
-// the Store and Log are pointed to current Agent's properties and should not be
-// replaced.
+// Args returns a new copy of agent's Args.
 func (ag *Agent) Args() Args {
 	return Args{
 		Store: ag.Store,

@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"margo.sh/mgutil"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
-
-	"margo.sh/mgutil"
 )
 
 type CmdOutputWriter struct {
