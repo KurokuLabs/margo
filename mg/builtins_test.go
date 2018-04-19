@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -65,7 +64,7 @@ func TestTypeCmdEmptyArgs(t *testing.T) {
 		},
 	}
 
-	if got := mg.TypeCmd(input); !reflect.DeepEqual(got, input.State) {
+	if got := mg.TypeCmd(input); got != input.State {
 		t.Errorf("TypeCmd() = %v, want %v", got, input.State)
 	}
 	out := buf.String()
@@ -79,20 +78,21 @@ func TestTypeCmdEmptyArgs(t *testing.T) {
 	}
 }
 
-func buildBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, buf io.Writer) *mg.BultinCmdCtx {
-	ctx := &mg.Ctx{
-		State: &mg.State{
-			BuiltinCmds: cmds,
-		},
-	}
+func setupBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, buf io.Writer) (*mg.BultinCmdCtx, func()) {
+	ag, _ := mg.NewAgent(mg.AgentConfig{})
+	ag.Store.State().BuiltinCmds = cmds
+	ctx, done := ag.NewCtx(nil)
 	ctx.Env = envMap
 	rc := mg.RunCmd{Args: args}
+
 	cmd := mg.NewBultinCmdCtx(ctx, rc)
 	cmd.Output = &mg.CmdOutputWriter{
 		Writer:   buf,
 		Dispatch: nil,
 	}
-	return cmd
+	return cmd, func() {
+		close(done)
+	}
 }
 
 // tests when command is found, it should choose it.
@@ -101,9 +101,10 @@ func TestTypeCmdLookupCmd(t *testing.T) {
 	item1 := mg.BultinCmd{Name: "this name", Desc: "this description"}
 	item2 := mg.BultinCmd{Name: "another one", Desc: "should not appear"}
 	buf := new(bytes.Buffer)
-	input := buildBultinCmdCtx(mg.BultinCmdList{item1, item2}, []string{item2.Name}, nil, buf)
+	input, cleanup := setupBultinCmdCtx(mg.BultinCmdList{item1, item2}, []string{item2.Name}, nil, buf)
+	defer cleanup()
 
-	if got := mg.TypeCmd(input); !reflect.DeepEqual(got, input.State) {
+	if got := mg.TypeCmd(input); got != input.State {
 		t.Errorf("TypeCmd() = %v, want %v", got, input.State)
 	}
 	out := buf.String()
@@ -183,7 +184,8 @@ func TestEnvCmd(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := new(bytes.Buffer)
-			input := buildBultinCmdCtx(tc.cmds, tc.args, tc.envs, buf)
+			input, cleanup := setupBultinCmdCtx(tc.cmds, tc.args, tc.envs, buf)
+			defer cleanup()
 			if got := mg.EnvCmd(input); got == nil {
 				t.Error("EnvCmd() = (nil); want (*State)")
 			}
