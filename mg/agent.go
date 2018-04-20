@@ -151,6 +151,12 @@ func (ag *Agent) Run() error {
 	return ag.communicate()
 }
 
+// NewCtx returns a new Ctx initialized using the agent's Store and State.
+// The caller is responsible for closing the done channel.
+func (ag *Agent) NewCtx(act Action) (mx *Ctx, done chan struct{}) {
+	return newCtx(ag, ag.Store.State(), act, ag.Store)
+}
+
 func (ag *Agent) communicate() error {
 	ag.Log.Println("started")
 	ag.Store.dispatch(Started{})
