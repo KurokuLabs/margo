@@ -145,6 +145,7 @@ type Agent struct {
 	closed bool
 }
 
+// Run starts the Agent's event loop. It returns immediately on the first error.
 func (ag *Agent) Run() error {
 	defer ag.shutdown()
 	return ag.communicate()
@@ -210,6 +211,12 @@ func (ag *Agent) send(res agentRes) error {
 	return ag.enc.Encode(res.finalize())
 }
 
+// shutdown sequence:
+// * stop incoming requests
+// * wait for all reqs to complete
+// * tell reducers we're shutting down
+// * stop outgoing responses
+// * tell the world we're done
 func (ag *Agent) shutdown() {
 	sd := &ag.sd
 	sd.mu.Lock()
@@ -220,13 +227,6 @@ func (ag *Agent) shutdown() {
 	}
 	sd.closed = true
 
-	// shutdown sequence:
-	// * stop incoming requests
-	// * wait for all reqs to complete
-	// * tell reducers we're shutting down
-	// * stop outgoing responses
-	// * tell the world we're done
-
 	// defers because we want *some* guarantee that all these steps will be taken
 	defer close(sd.done)
 	defer ag.stdout.Close()
@@ -235,7 +235,12 @@ func (ag *Agent) shutdown() {
 	defer ag.stdin.Close()
 }
 
+// NewAgent returns a new Agent, initialised using the settings in cfg.
+// If cfg.Codec is invalid (see CodecNames), `DefaultCodec` will be used as the
+// codec and an error returned.
+// An initialised, usable agent object is always returned.
 func NewAgent(cfg AgentConfig) (*Agent, error) {
+	var err error
 	done := make(chan struct{})
 	ag := &Agent{
 		Name:   cfg.AgentName,
@@ -271,15 +276,17 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	}
 
 	if ag.handle == nil {
-		return ag, fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
+		err = fmt.Errorf("Invalid codec '%s'. Expected %s", cfg.Codec, CodecNamesStr)
+		ag.handle = codecHandles[DefaultCodec]
 	}
 	ag.encWr = bufio.NewWriter(ag.stdout)
 	ag.enc = codec.NewEncoder(ag.encWr, ag.handle)
 	ag.dec = codec.NewDecoder(bufio.NewReader(ag.stdin), ag.handle)
 
-	return ag, nil
+	return ag, err
 }
 
+// Args returns a new copy of agent's Args.
 func (ag *Agent) Args() Args {
 	return Args{
 		Store: ag.Store,
