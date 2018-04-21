@@ -61,7 +61,7 @@ func (w *CmdOutputWriter) write(writeIfClosed bool, p []byte) (int, error) {
 
 // Close writes provided output(s) and closes the writer. It returns
 // os.ErrClosed if Close has already been called. If the Closer is not nil
-// w.Cloert.Close() method will be called.
+// w.Closer.Close() method will be called.
 func (w *CmdOutputWriter) Close(output ...[]byte) error {
 	defer w.dispatch()
 
