@@ -3,10 +3,9 @@ package mg_test
 import (
 	"bytes"
 	"fmt"
+	"margo.sh/mg"
 	"os"
 	"testing"
-
-	"margo.sh/mg"
 )
 
 func TestCmdOutputWriter_Copy(t *testing.T) {
@@ -28,21 +27,24 @@ var errNotEnoughSize = fmt.Errorf("not enough size")
 
 type limitWriter []byte
 
-func (l *limitWriter) Write(p []byte) (n int, err error) {
-	n = copy(*l, p)
+func (l limitWriter) Write(p []byte) (n int, err error) {
+	n = copy(l, p)
 	if n < len(p) {
 		return n, errNotEnoughSize
 	}
 	return n, nil
 }
 
+// sub-tests that their names end with `closed` tests the first condition of the
+// function. Different sizes are provided to examine the returned error. Writes
+// should not exceed the size of limitWriter, hence the wantSize.
 func TestCmdOutputWriter_Write(t *testing.T) {
 	p := []byte("vbfh7H8 P8tSKkJrKKklBnktkOLChBW")
 
 	tcs := []struct {
 		name     string
-		size     int
-		closed   bool
+		size     int  // length of limitWriter
+		closed   bool // will close the writer before assertions if set true.
 		wantSize int
 		err      error
 	}{
@@ -77,7 +79,7 @@ func TestCmdOutputWriter_Write(t *testing.T) {
 			}
 			readBytes := p[:tc.wantSize]
 			wroteBytes := buf[:tc.wantSize]
-			if string(readBytes) != string(wroteBytes) {
+			if !bytes.Equal(readBytes, wroteBytes) {
 				t.Errorf("wroteBytes = %v, want %v", wroteBytes, readBytes)
 			}
 		})
@@ -101,7 +103,7 @@ func TestCmdOutputWriter_Close_noOutput(t *testing.T) {
 	buf := &writerStub{
 		writeFunc: func(p []byte) (int, error) {
 			called = true
-			return 0, nil
+			return len(p), nil
 		},
 		closeFunc: func() error {
 			closed = true
@@ -148,7 +150,7 @@ func TestCmdOutputWriter_Close_withOutput(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case p := <-out:
-			if string(p) != string(o1) && string(p) != string(o2) {
+			if !bytes.Equal(p, o1) && !bytes.Equal(p, o2) {
 				t.Errorf("got %v, want %v or %v", p, o1, o2)
 			}
 		default:
@@ -172,7 +174,7 @@ func TestCmdOutputWriter_Output(t *testing.T) {
 	if o.Fd != w.Fd {
 		t.Errorf("o.Fd = %s, want %s", o.Fd, w.Fd)
 	}
-	if string(o.Output) != buf.String() {
+	if !bytes.Equal(o.Output, buf.Bytes()) {
 		t.Errorf("o.Output = %s, want %s", string(o.Output), buf.String())
 	}
 	if o.Close {

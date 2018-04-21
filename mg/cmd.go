@@ -23,7 +23,7 @@ type CmdOutputWriter struct {
 	closed bool
 }
 
-// Copy applies updaters to the object.
+// Copy applies updaters to a new copy of the writer.
 func (w *CmdOutputWriter) Copy(updaters ...func(*CmdOutputWriter)) *CmdOutputWriter {
 	p := *w
 	p.buf = append([]byte{}, w.buf...)
@@ -60,7 +60,8 @@ func (w *CmdOutputWriter) write(writeIfClosed bool, p []byte) (int, error) {
 }
 
 // Close writes provided output(s) and closes the writer. It returns
-// os.ErrClosed if Close is already been called.
+// os.ErrClosed if Close has already been called. If the Closer is not nil
+// w.Cloert.Close() method will be called.
 func (w *CmdOutputWriter) Close(output ...[]byte) error {
 	defer w.dispatch()
 
@@ -93,7 +94,8 @@ func (w *CmdOutputWriter) dispatch() {
 	}
 }
 
-// Output returns a new CmdOutput object.
+// Output returns the data buffered from previous calls to w.Write() and clears
+// the buffer.
 func (w *CmdOutputWriter) Output() CmdOutput {
 	w.mu.Lock()
 	defer w.mu.Unlock()
