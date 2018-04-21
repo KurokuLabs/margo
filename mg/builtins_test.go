@@ -64,7 +64,7 @@ func TestTypeCmdEmptyArgs(t *testing.T) {
 		},
 	}
 
-	if got := mg.TypeCmd(input); got != input.State {
+	if got := mg.Builtins.TypeCmd(input); got != input.State {
 		t.Errorf("TypeCmd() = %v, want %v", got, input.State)
 	}
 	out := buf.String()
@@ -104,7 +104,7 @@ func TestTypeCmdLookupCmd(t *testing.T) {
 	input, cleanup := setupBultinCmdCtx(mg.BultinCmdList{item1, item2}, []string{item2.Name}, nil, buf)
 	defer cleanup()
 
-	if got := mg.TypeCmd(input); got != input.State {
+	if got := mg.Builtins.TypeCmd(input); got != input.State {
 		t.Errorf("TypeCmd() = %v, want %v", got, input.State)
 	}
 	out := buf.String()
@@ -186,7 +186,7 @@ func TestEnvCmd(t *testing.T) {
 			buf := new(bytes.Buffer)
 			input, cleanup := setupBultinCmdCtx(tc.cmds, tc.args, tc.envs, buf)
 			defer cleanup()
-			if got := mg.EnvCmd(input); got == nil {
+			if got := mg.Builtins.EnvCmd(input); got == nil {
 				t.Error("EnvCmd() = (nil); want (*State)")
 			}
 			out := buf.String()
