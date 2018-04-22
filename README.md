@@ -12,4 +12,3 @@ this time with less Python, less Sublime Text and more Go.
 This repo is made public at this time solely to make it easier to integrate with GoSublime.
 
 It is under very active experimental development and code may be broken or deleted at any time.
-
