@@ -3,11 +3,10 @@ package mg_test
 import (
 	"bytes"
 	"io"
+	"margo.sh/mg"
 	"os"
 	"strings"
 	"testing"
-
-	"margo.sh/mg"
 )
 
 func TestBultinCmdList_Lookup(t *testing.T) {
@@ -79,9 +78,8 @@ func TestTypeCmdEmptyArgs(t *testing.T) {
 }
 
 func setupBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, buf io.Writer) (*mg.BultinCmdCtx, func()) {
-	ag, _ := mg.NewAgent(mg.AgentConfig{})
-	ag.Store.State().BuiltinCmds = cmds
-	ctx, done := ag.NewCtx(nil)
+	ctx := mg.NewTestingCtx(nil)
+	ctx.State = ctx.AddBuiltinCmds(cmds...)
 	ctx.Env = envMap
 	rc := mg.RunCmd{Args: args}
 
@@ -90,9 +88,7 @@ func setupBultinCmdCtx(cmds mg.BultinCmdList, args []string, envMap mg.EnvMap, b
 		Writer:   buf,
 		Dispatch: nil,
 	}
-	return cmd, func() {
-		close(done)
-	}
+	return cmd, ctx.Cancel
 }
 
 // tests when command is found, it should choose it.

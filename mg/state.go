@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,24 +23,49 @@ var (
 type Ctx struct {
 	*State
 	Action Action
-
-	Store *Store
-
-	Log *Logger
-
+	Store  *Store
+	Log    *Logger
 	Parent *Ctx
 	Values map[interface{}]interface{}
-	DoneC  <-chan struct{}
 
-	handle codec.Handle
+	doneC      chan struct{}
+	cancelOnce *sync.Once
+	handle     codec.Handle
+}
+
+// newCtx creates a new Ctx
+// if st is nil, the state will be set to the equivalent of Store.state.new()
+func newCtx(sto *Store, st *State, act Action) *Ctx {
+	if st == nil {
+		st = sto.state.new()
+	}
+	return &Ctx{
+		State:  st,
+		Action: act,
+
+		Store: sto,
+
+		Log: sto.ag.Log,
+
+		doneC:      make(chan struct{}),
+		cancelOnce: &sync.Once{},
+
+		handle: sto.ag.handle,
+	}
 }
 
 func (*Ctx) Deadline() (time.Time, bool) {
 	return time.Time{}, false
 }
 
+func (mx *Ctx) Cancel() {
+	mx.cancelOnce.Do(func() {
+		close(mx.doneC)
+	})
+}
+
 func (mx *Ctx) Done() <-chan struct{} {
-	return mx.DoneC
+	return mx.doneC
 }
 
 func (*Ctx) Err() error {
@@ -58,28 +84,6 @@ func (mx *Ctx) Value(k interface{}) interface{} {
 
 func (mx *Ctx) AgentName() string {
 	return mx.Store.ag.Name
-}
-
-func newCtx(ag *Agent, st *State, act Action, sto *Store) (mx *Ctx, done chan struct{}) {
-	if st == nil {
-		panic("newCtx: state must not be nil")
-	}
-	if st == nil {
-		panic("newCtx: store must not be nil")
-	}
-	done = make(chan struct{})
-	return &Ctx{
-		State:  st,
-		Action: act,
-
-		Store: sto,
-
-		Log: ag.Log,
-
-		DoneC: done,
-
-		handle: ag.handle,
-	}, done
 }
 
 func (mx *Ctx) ActionIs(actions ...Action) bool {
@@ -196,15 +200,19 @@ type EditorConfig interface {
 	EnabledForLangs(langs ...string) EditorConfig
 }
 
-type stickyState struct {
+// StickyState is state that's persisted from one reduction to the next.
+// It's holds the current state of the editor.
+type StickyState struct {
 	View   *View
 	Env    EnvMap
 	Editor EditorProps
+	Config EditorConfig
 }
 
+// State holds data about the state of the editor,
+// and transformations made by reducers
 type State struct {
-	stickyState
-	Config        EditorConfig
+	StickyState
 	Status        StrSet
 	Errors        StrSet
 	Completions   []Completion
@@ -217,12 +225,12 @@ type State struct {
 
 func newState(sto *Store) *State {
 	return &State{
-		stickyState: stickyState{View: newView(sto)},
+		StickyState: StickyState{View: newView(sto)},
 	}
 }
 
 func (st *State) new() *State {
-	return &State{stickyState: st.stickyState}
+	return &State{StickyState: st.StickyState}
 }
 
 func (st *State) Copy(updaters ...func(*State)) *State {

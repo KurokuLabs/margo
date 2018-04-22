@@ -7,12 +7,11 @@ import (
 func TestCmdSupport_Reduce_noCalls(t *testing.T) {
 	type unknown struct{ ActionType }
 	cs := &cmdSupport{}
-	ag, _ := NewAgent(AgentConfig{})
-	ctx, done := ag.NewCtx(nil)
-	defer close(done)
+	ctx := NewTestingCtx(nil)
+	defer ctx.Cancel()
 
-	if state := cs.Reduce(ctx); state != ag.Store.State() {
-		t.Errorf("cmdSupport.Reduce() = %v, want %v", state, ag.Store.State())
+	if state := cs.Reduce(ctx); state != ctx.State {
+		t.Errorf("cmdSupport.Reduce() = %v, want %v", state, ctx.State)
 	}
 
 	ctx.Action = new(unknown)
@@ -24,12 +23,11 @@ func TestCmdSupport_Reduce_noCalls(t *testing.T) {
 func TestCmdSupport_Reduce_withRunCmd(t *testing.T) {
 	var called bool
 	cs := &cmdSupport{}
-	ag, _ := NewAgent(AgentConfig{})
-	ctx, done := ag.NewCtx(RunCmd{
+	ctx := NewTestingCtx(RunCmd{
 		Fd:   "rHX23",
 		Name: ".mytest",
 	})
-	defer close(done)
+	defer ctx.Cancel()
 
 	ctx.State = ctx.AddBuiltinCmds(BultinCmd{
 		Name: ".mytest",
@@ -51,9 +49,8 @@ func TestCmdSupport_Reduce_withCmdOutput(t *testing.T) {
 	var called bool
 	fd := "CIlZ7zBWHIAL"
 	cs := &cmdSupport{}
-	ag, _ := NewAgent(AgentConfig{})
-	ctx, done := ag.NewCtx(nil)
-	defer close(done)
+	ctx := NewTestingCtx(nil)
+	defer ctx.Cancel()
 
 	ctx.Action = CmdOutput{
 		Fd: fd,

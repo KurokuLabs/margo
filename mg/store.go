@@ -70,8 +70,9 @@ func (sto *Store) dispatch(act Action) {
 	sto.mu.Lock()
 	defer sto.mu.Unlock()
 
-	mx, done := newCtx(sto.ag, sto.prepState(sto.state), act, sto)
-	defer close(done)
+	mx := newCtx(sto, nil, act)
+	defer mx.Cancel()
+
 	st := sto.reducers.Reduce(mx)
 	sto.updateState(st, true)
 }
@@ -100,36 +101,36 @@ func (sto *Store) syncRqAct(ag *Agent, props clientProps, ra agentReqAction) (*S
 	if err != nil {
 		return nil, err
 	}
-	mx, done := newCtx(sto.ag, sto.state, act, sto)
-	defer close(done)
 
-	mx = mx.Copy(func(mx *Ctx) {
-		st := sto.prepState(mx.State)
+	st := sto.state.new()
+	if cfg := sto.cfg; cfg != nil {
+		st.Config = cfg
+	}
 
-		if ep := props.Editor.EditorProps; ep.Name != "" {
-			st.Editor = ep
-		}
+	if ep := props.Editor.EditorProps; ep.Name != "" {
+		st.Editor = ep
+	}
 
-		if len(props.Env) != 0 {
-			st.Env = props.Env
-		}
-		st.Env = sto.autoSwitchInternalGOPATH(st.View, st.Env)
+	if len(props.Env) != 0 {
+		st.Env = props.Env
+	}
+	st.Env = sto.autoSwitchInternalGOPATH(st.View, st.Env)
 
-		if props.View != nil && props.View.Name != "" {
-			st.View = props.View.Copy(func(v *View) {
-				sto.initCache(v)
-				v.initSrcPos()
-			})
-		}
+	if props.View != nil && props.View.Name != "" {
+		st.View = props.View.Copy(func(v *View) {
+			sto.initCache(v)
+			v.initSrcPos()
+		})
+	}
 
-		mx.State = st
-	})
+	mx := newCtx(sto, st, act)
+	defer mx.Cancel()
 
 	return sto.reducers.Reduce(mx), nil
 }
 
 // autoSwitchInternalGOPATH automatically changes env[GOPATH] to the internal GOPATH
-// if view.Filename is a child of one of the internal GOPATH directories
+// if v.Filename is a child of one of the internal GOPATH directories
 func (sto *Store) autoSwitchInternalGOPATH(v *View, env EnvMap) EnvMap {
 	osGopath := os.Getenv("GOPATH")
 	fn := v.Filename()
@@ -159,12 +160,13 @@ func (sto *Store) State() *State {
 	return sto.state
 }
 
-func (sto *Store) prepState(st *State) *State {
-	st = st.new()
-	if sto.cfg != nil {
-		st.Config = sto.cfg
-	}
-	return st
+// NewCtx returns a new Ctx initialized using the internal StickyState.
+// The caller is responsible for calling Ctx.Cancel() when done with the Ctx
+func (sto *Store) NewCtx(act Action) *Ctx {
+	sto.mu.Lock()
+	defer sto.mu.Unlock()
+
+	return newCtx(sto, nil, act)
 }
 
 func newStore(ag *Agent, l Listener) *Store {
