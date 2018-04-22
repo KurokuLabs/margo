@@ -31,8 +31,10 @@ func (bcl BultinCmdList) Lookup(name string) (cmd BultinCmd, found bool) {
 	panic("internal error: the `.exec` BuiltinCmd is not defined")
 }
 
+// BuiltinCmds implements various builtin commands.
 type BuiltinCmds struct{}
 
+// ExecCmd implements the `.exec` builtin.
 func (bc BuiltinCmds) ExecCmd(bx *BultinCmdCtx) *State {
 	go bc.execCmd(bx)
 	return bx.State
@@ -54,6 +56,9 @@ func (bc BuiltinCmds) execCmd(bx *BultinCmdCtx) {
 	bx.RunProc()
 }
 
+// TypeCmd tries to find the bx.Args in commands, and writes the description of
+// the commands into provided buffer. If the Args is empty, it uses all
+// available commands.
 func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
 	cmds := bx.BuiltinCmds
 	names := bx.Args
@@ -74,6 +79,8 @@ func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
 	return bx.State
 }
 
+// EnvCmd finds all environment variables corresponding to bx.Args into the
+// bx.Output buffer.
 func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
 	buf := &bytes.Buffer{}
 	names := bx.Args
@@ -92,6 +99,7 @@ func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
 	return bx.State
 }
 
+// Commands returns a list of predefined commands.
 func (bc BuiltinCmds) Commands() BultinCmdList {
 	return []BultinCmd{
 		BultinCmd{Name: ".env", Desc: "List env vars", Run: bc.EnvCmd},
@@ -100,6 +108,7 @@ func (bc BuiltinCmds) Commands() BultinCmdList {
 	}
 }
 
+// Reduce adds the list of predefined builtins for the RunCmd.
 func (bc BuiltinCmds) Reduce(mx *Ctx) *State {
 	if _, ok := mx.Action.(RunCmd); ok {
 		return mx.State.AddBuiltinCmds(bc.Commands()...)
