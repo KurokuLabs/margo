@@ -2,26 +2,27 @@ package mg
 
 import (
 	"io"
+	"margo.sh/mgutil"
 )
 
 // NewTestingAgent creates a new agent for testing
 //
 // The agent config used is equivalent to:
 // * Codec: DefaultCodec
-// * Stdin: stdin or NopReadWriteCloser{} if nil
-// * Stdout: stdout or NopReadWriteCloser{} if nil
-// * Stderr: NopReadWriteCloser{}
+// * Stdin: stdin or &mgutil.IOWrapper{} if nil
+// * Stdout: stdout or &mgutil.IOWrapper{} if nil
+// * Stderr: &mgutil.IOWrapper{}
 func NewTestingAgent(stdout io.WriteCloser, stdin io.ReadCloser) *Agent {
 	if stdout == nil {
-		stdout = NopReadWriteCloser{}
+		stdout = &mgutil.IOWrapper{}
 	}
 	if stdin == nil {
-		stdin = NopReadWriteCloser{}
+		stdin = &mgutil.IOWrapper{}
 	}
 	ag, _ := NewAgent(AgentConfig{
 		Stdout: stdout,
 		Stdin:  stdin,
-		Stderr: NopReadWriteCloser{},
+		Stderr: &mgutil.IOWrapper{},
 	})
 	return ag
 }

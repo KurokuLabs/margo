@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"io"
+	"margo.sh/mgutil"
 	"os"
 	"sort"
 	"strings"
@@ -257,9 +258,20 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	if ag.stderr == nil {
 		ag.stderr = os.Stderr
 	}
-	ag.stdin = &LockedReadCloser{ReadCloser: ag.stdin}
-	ag.stdout = &LockedWriteCloser{WriteCloser: ag.stdout}
-	ag.stderr = &LockedWriteCloser{WriteCloser: ag.stderr}
+	ag.stdin = &mgutil.IOWrapper{
+		Locker: &sync.Mutex{},
+		Reader: ag.stdin,
+		Closer: ag.stdin,
+	}
+	ag.stdout = &mgutil.IOWrapper{
+		Locker: &sync.Mutex{},
+		Writer: ag.stdout,
+		Closer: ag.stdout,
+	}
+	ag.stderr = &mgutil.IOWrapper{
+		Locker: &sync.Mutex{},
+		Writer: ag.stderr,
+	}
 	ag.Log = NewLogger(ag.stderr)
 	ag.Store = newStore(ag, ag.listener).
 		Before(defaultReducers.before...).

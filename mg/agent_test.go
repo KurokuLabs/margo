@@ -1,6 +1,8 @@
 package mg
 
 import (
+	"io"
+	"margo.sh/mgutil"
 	"os"
 	"strings"
 	"testing"
@@ -30,17 +32,17 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("agent creation failed: %s", err)
 	}
 
-	stdin := ag.stdin
-	if w, ok := stdin.(*LockedReadCloser); ok {
-		stdin = w.ReadCloser
+	var stdin io.Reader = ag.stdin
+	if w, ok := stdin.(*mgutil.IOWrapper); ok {
+		stdin = w.Reader
 	}
-	stdout := ag.stdout
-	if w, ok := stdout.(*LockedWriteCloser); ok {
-		stdout = w.WriteCloser
+	var stdout io.Writer = ag.stdout
+	if w, ok := stdout.(*mgutil.IOWrapper); ok {
+		stdout = w.Writer
 	}
-	stderr := ag.stderr
-	if w, ok := stderr.(*LockedWriteCloser); ok {
-		stderr = w.WriteCloser
+	var stderr io.Writer = ag.stderr
+	if w, ok := stderr.(*mgutil.IOWrapper); ok {
+		stderr = w.Writer
 	}
 
 	cases := []struct {
@@ -66,7 +68,7 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestFirstAction(t *testing.T) {
-	nrwc := NopReadWriteCloser{
+	nrwc := &mgutil.IOWrapper{
 		Reader: strings.NewReader("{}\n"),
 	}
 	ag, err := NewAgent(AgentConfig{
@@ -102,7 +104,7 @@ func TestFirstAction(t *testing.T) {
 }
 
 type readWriteCloseStub struct {
-	NopReadWriteCloser
+	mgutil.IOWrapper
 	closed    bool
 	CloseFunc func() error
 }
