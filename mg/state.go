@@ -20,13 +20,33 @@ var (
 	_ context.Context = (*Ctx)(nil)
 )
 
+// Ctx holds data about the current request/reduction.
+//
+// To create a new instance, use Store.NewCtx()
+//
+// NOTE: Ctx should be treated as readonly and users should not assign to any
+// of its fields or the fields of any of its members.
+// If a field must be updated, you should use one of the methods like Copy
+//
+// Apart from Action and Parent, no other field will ever be nil
+// and if updates, no field should be set to nil
 type Ctx struct {
+	// State is the current state of the world
 	*State
+
+	// Action is the action that was dispatched.
+	// It's a hint telling reducers about some action that happened,
+	// e.g. that the view is about to be saved or that it was changed.
 	Action Action
-	Store  *Store
-	Log    *Logger
+
+	// Store is the global store
+	Store *Store
+
+	// Log is the global logger
+	Log *Logger
+
+	// Parent, if set, is the Ctx that this object was copied from
 	Parent *Ctx
-	Values map[interface{}]interface{}
 
 	doneC      chan struct{}
 	cancelOnce *sync.Once
@@ -54,38 +74,46 @@ func newCtx(sto *Store, st *State, act Action) *Ctx {
 	}
 }
 
+// Deadline implements context.Context.Deadline
 func (*Ctx) Deadline() (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// Cancel cancels the ctx by arranging for the Ctx.Done() channel to be closed.
+// Canceling this Ctx cancels all other Ctxs Copy()ed from it.
 func (mx *Ctx) Cancel() {
 	mx.cancelOnce.Do(func() {
 		close(mx.doneC)
 	})
 }
 
+// Done implements context.Context.Done()
 func (mx *Ctx) Done() <-chan struct{} {
 	return mx.doneC
 }
 
-func (*Ctx) Err() error {
-	return nil
+// Err implements context.Context.Err()
+func (mx *Ctx) Err() error {
+	select {
+	case <-mx.Done():
+		return context.Canceled
+	default:
+		return nil
+	}
 }
 
+// Value implements context.Context.Value() but always returns nil
 func (mx *Ctx) Value(k interface{}) interface{} {
-	if v, ok := mx.Values[k]; ok {
-		return v
-	}
-	if mx.Parent != nil {
-		return mx.Parent.Value(k)
-	}
 	return nil
 }
 
+// AgentName returns the name of the agent if set
+// if set, it's usually the agent name as used in the command `margo.sh [run...] $agent`
 func (mx *Ctx) AgentName() string {
 	return mx.Store.ag.Name
 }
 
+// ActionIs returns true if the type Ctx.Action is the same type as any of those in actions
 func (mx *Ctx) ActionIs(actions ...Action) bool {
 	typ := reflect.TypeOf(mx.Action)
 	for _, act := range actions {
@@ -96,25 +124,27 @@ func (mx *Ctx) ActionIs(actions ...Action) bool {
 	return false
 }
 
+// LangIs is a wrapper around Ctx.View.Lang()
 func (mx *Ctx) LangIs(names ...string) bool {
 	return mx.View.LangIs(names...)
 }
 
+// Copy create a shallow copy of the Ctx.
+//
+// It calls the functions in updaters on the new object.
+// Updating the new Ctx via these functions is preferred to assigning to the new Ctx
 func (mx *Ctx) Copy(updaters ...func(*Ctx)) *Ctx {
 	x := *mx
 	x.Parent = mx
-	if len(mx.Values) != 0 {
-		x.Values = make(map[interface{}]interface{}, len(mx.Values))
-		for k, v := range mx.Values {
-			x.Values[k] = v
-		}
-	}
+	mx = &x
+
 	for _, f := range updaters {
-		f(&x)
+		f(mx)
 	}
-	return &x
+	return mx
 }
 
+// Begin stars a new task and returns its ticket
 func (mx *Ctx) Begin(t Task) *TaskTicket {
 	return mx.Store.Begin(t)
 }
