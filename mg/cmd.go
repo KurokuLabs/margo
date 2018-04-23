@@ -25,15 +25,18 @@ type CmdOutputWriter struct {
 
 // Copy applies updaters to a new copy of the writer.
 func (w *CmdOutputWriter) Copy(updaters ...func(*CmdOutputWriter)) *CmdOutputWriter {
-	p := *w
-	p.buf = append([]byte{}, w.buf...)
-	p.Writer = nil
-	p.Closer = nil
-	w = &p
-	for _, f := range updaters {
-		f(w)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	p := &CmdOutputWriter{
+		Fd:       w.Fd,
+		Dispatch: w.Dispatch,
 	}
-	return w
+	p.buf = append(p.buf, w.buf...)
+	for _, f := range updaters {
+		f(p)
+	}
+	return p
 }
 
 func (w *CmdOutputWriter) Write(p []byte) (int, error) {
