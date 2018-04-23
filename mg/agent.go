@@ -59,9 +59,18 @@ type AgentConfig struct {
 	// Default: json
 	Codec string
 
-	Stdin  io.ReadCloser
+	// Stdin is the stream through which the client sends encoded request data
+	// It's closed when Agent.Run() returns
+	Stdin io.ReadCloser
+
+	// Stdout is the stream through which the server (the Agent type) sends encoded responses
+	// It's closed when Agent.Run() returns
 	Stdout io.WriteCloser
-	Stderr io.WriteCloser
+
+	// Stderr is used for logging
+	// Clients are encouraged to leave it open until the process exits
+	// to allow for logging to keep working during process shutdown
+	Stderr io.Writer
 }
 
 type agentReqAction struct {
@@ -130,7 +139,7 @@ type Agent struct {
 
 	stdin  io.ReadCloser
 	stdout io.WriteCloser
-	stderr io.WriteCloser
+	stderr io.Writer
 
 	handle codec.Handle
 	enc    *codec.Encoder
