@@ -177,7 +177,6 @@ func (ag *Agent) communicate() error {
 		rq.finalize(ag)
 		ag.handleReq(rq)
 	}
-	return nil
 }
 
 func (ag *Agent) handleReq(rq *agentReq) {
