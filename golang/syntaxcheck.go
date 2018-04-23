@@ -1,8 +1,8 @@
 package golang
 
 import (
-	"margo.sh/mg"
 	"go/scanner"
+	"margo.sh/mg"
 )
 
 type SyntaxCheck struct{}
@@ -16,7 +16,7 @@ func (sc *SyntaxCheck) Reduce(mx *mg.Ctx) *mg.State {
 	v := st.View
 	src, err := v.ReadAll()
 	if err != nil {
-		return st.Errorf("cannot read: %s: %s", v.Filename(), err)
+		return st.AddErrorf("cannot read: %s: %s", v.Filename(), err)
 	}
 
 	type key struct{ hash string }
