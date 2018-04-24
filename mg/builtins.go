@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	Builtins = BuiltinCmds{}
+	Builtins = builtins{}
 )
 
 type BultinCmdList []BultinCmd
@@ -32,15 +32,15 @@ func (bcl BultinCmdList) Lookup(name string) (cmd BultinCmd, found bool) {
 }
 
 // BuiltinCmds implements various builtin commands.
-type BuiltinCmds struct{}
+type builtins struct{}
 
 // ExecCmd implements the `.exec` builtin.
-func (bc BuiltinCmds) ExecCmd(bx *BultinCmdCtx) *State {
-	go bc.execCmd(bx)
+func (b builtins) ExecCmd(bx *BultinCmdCtx) *State {
+	go b.execCmd(bx)
 	return bx.State
 }
 
-func (bc BuiltinCmds) execCmd(bx *BultinCmdCtx) {
+func (b builtins) execCmd(bx *BultinCmdCtx) {
 	defer bx.Output.Close()
 
 	if bx.Name == ".exec" {
@@ -59,7 +59,7 @@ func (bc BuiltinCmds) execCmd(bx *BultinCmdCtx) {
 // TypeCmd tries to find the bx.Args in commands, and writes the description of
 // the commands into provided buffer. If the Args is empty, it uses all
 // available commands.
-func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
+func (b builtins) TypeCmd(bx *BultinCmdCtx) *State {
 	cmds := bx.BuiltinCmds
 	names := bx.Args
 	if len(names) == 0 {
@@ -81,7 +81,7 @@ func (bc BuiltinCmds) TypeCmd(bx *BultinCmdCtx) *State {
 
 // EnvCmd finds all environment variables corresponding to bx.Args into the
 // bx.Output buffer.
-func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
+func (b builtins) EnvCmd(bx *BultinCmdCtx) *State {
 	buf := &bytes.Buffer{}
 	names := bx.Args
 	if len(names) == 0 {
@@ -100,16 +100,16 @@ func (bc BuiltinCmds) EnvCmd(bx *BultinCmdCtx) *State {
 }
 
 // Commands returns a list of predefined commands.
-func (bc BuiltinCmds) Commands() BultinCmdList {
+func (b builtins) Commands() BultinCmdList {
 	return []BultinCmd{
-		BultinCmd{Name: ".env", Desc: "List env vars", Run: bc.EnvCmd},
-		BultinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: bc.ExecCmd},
-		BultinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: bc.TypeCmd},
+		BultinCmd{Name: ".env", Desc: "List env vars", Run: b.EnvCmd},
+		BultinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: b.ExecCmd},
+		BultinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: b.TypeCmd},
 	}
 }
 
 // Reduce adds the list of predefined builtins for the RunCmd.
-func (bc BuiltinCmds) Reduce(mx *Ctx) *State {
+func (bc builtins) Reduce(mx *Ctx) *State {
 	if _, ok := mx.Action.(RunCmd); ok {
 		return mx.State.AddBuiltinCmds(bc.Commands()...)
 	}
