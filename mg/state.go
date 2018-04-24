@@ -188,7 +188,7 @@ func (rl reducerList) ReduceCtx(mx *Ctx) *Ctx {
 	for _, r := range rl {
 		pf := ReducerProfile{
 			Action: mx.Action,
-			Label:  rl.label(r),
+			Label:  ReducerLabel(r),
 			Start:  time.Now(),
 		}
 		var st *State
@@ -204,13 +204,6 @@ func (rl reducerList) ReduceCtx(mx *Ctx) *Ctx {
 		})
 	}
 	return mx
-}
-
-func (rl reducerList) label(r Reducer) string {
-	if r, ok := r.(ReducerLabeler); ok {
-		return r.ReducerLabel()
-	}
-	return reflect.TypeOf(r).String()
 }
 
 // Reduce is the equivalent of calling ReduceCtx().State
@@ -378,6 +371,29 @@ type ReducerLabeler interface {
 	// ReducerLabel returns a string that can be used to name the reducer
 	// in ReducerProfiles, pprof profiles and other display scenarios
 	ReducerLabel() string
+}
+
+// ActionLabel returns a label for the actions act.
+// It takes into account mg.Reducer being an alias for nil.
+func ActionLabel(act Action) string {
+	if t := reflect.TypeOf(act); t != nil {
+		return t.String()
+	}
+	return "mg.Render"
+}
+
+// ReducerLabel returns a label for the reducer r.
+// It takes into account the ReducerLabeler interface.
+func ReducerLabel(r Reducer) string {
+	if r, ok := r.(ReducerLabeler); ok {
+		if lbl := r.ReducerLabel(); lbl != "" {
+			return lbl
+		}
+	}
+	if t := reflect.TypeOf(r); t != nil {
+		return t.String()
+	}
+	return "mg.Reducer"
 }
 
 // ReducerProfile holds details about reducers that are run
