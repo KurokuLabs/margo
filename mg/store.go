@@ -14,9 +14,9 @@ type Dispatcher func(Action)
 type Listener func(*State)
 
 type storeReducers struct {
-	before ReducerList
-	use    ReducerList
-	after  ReducerList
+	before reducerList
+	use    reducerList
+	after  reducerList
 }
 
 func (sr storeReducers) Reduce(mx *Ctx) *State {
