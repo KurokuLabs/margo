@@ -178,40 +178,48 @@ type Reducer interface {
 	Reduce(*Ctx) *State
 }
 
-// ReducerList is a slice of reducers
-type ReducerList []Reducer
+// reducerList is a slice of reducers
+type reducerList []Reducer
 
-// ReduceCtx calls the reducers in the slice in order
-func (rl ReducerList) ReduceCtx(mx *Ctx) *Ctx {
+// ReduceCtx calls the reducers in the slice in order.
+// For each reducer ran, it adds a ReducerProfile to State.Profiles.
+// Additionally, each reducer is ran through pprofdo.Do with prefix label "margo.reduce"
+func (rl reducerList) ReduceCtx(mx *Ctx) *Ctx {
 	for _, r := range rl {
+		pf := ReducerProfile{
+			Action: mx.Action,
+			Label:  rl.label(r),
+			Start:  time.Now(),
+		}
 		var st *State
-		pprofdo.Do(mx, rl.labels(r), func(context.Context) {
+		pprofdo.Do(mx, []string{"margo.reduce", pf.Label}, func(context.Context) {
 			st = r.Reduce(mx)
 		})
+		pf.End = time.Now()
 		mx = mx.Copy(func(mx *Ctx) {
-			mx.State = st
+			mx.State = st.Copy(func(st *State) {
+				l := st.Profiles
+				st.Profiles = append(l[:len(l):len(l)], pf)
+			})
 		})
 	}
 	return mx
 }
 
-func (rl ReducerList) labels(r Reducer) []string {
-	lbl := ""
-	if rf, ok := r.(ReduceFunc); ok && rf.Label != "" {
-		lbl = rf.Label
-	} else {
-		lbl = reflect.TypeOf(r).String()
+func (rl reducerList) label(r Reducer) string {
+	if r, ok := r.(ReducerLabeler); ok {
+		return r.ReducerLabel()
 	}
-	return []string{"margo.reduce", lbl}
+	return reflect.TypeOf(r).String()
 }
 
 // Reduce is the equivalent of calling ReduceCtx().State
-func (rl ReducerList) Reduce(mx *Ctx) *State {
+func (rl reducerList) Reduce(mx *Ctx) *State {
 	return rl.ReduceCtx(mx).State
 }
 
 // Add adds new reducers to the list. It returns a new list.
-func (rl ReducerList) Add(reducers ...Reducer) ReducerList {
+func (rl reducerList) Add(reducers ...Reducer) reducerList {
 	return append(rl[:len(rl):len(rl)], reducers...)
 }
 
@@ -224,6 +232,14 @@ type ReduceFunc struct {
 	// Label is an optional string that may be used as a pprof label.
 	// If unset, a name based on the Func type will be used.
 	Label string
+}
+
+// ReducerLabel implements ReducerLabeler
+func (rf ReduceFunc) ReducerLabel() string {
+	if s := rf.Label; s != "" {
+		return s
+	}
+	return reflect.TypeOf(rf).String()
 }
 
 // Reduce implements the Reducer interface, delegating to ReduceFunc.Func
@@ -348,8 +364,37 @@ type State struct {
 	// It's usually populated during the QueryUserCmds action.
 	UserCmds []UserCmd
 
+	// Profiles is a list of reducer profiles for reducers that have already ran
+	Profiles []ReducerProfile
+
 	// clientActions is a list of client actions to dispatch in the editor
 	clientActions []clientActionType
+}
+
+// ReducerLabeler is the interface that describes reducers that label themselves
+type ReducerLabeler interface {
+	Reducer
+
+	// ReducerLabel returns a string that can be used to name the reducer
+	// in ReducerProfiles, pprof profiles and other display scenarios
+	ReducerLabel() string
+}
+
+// ReducerProfile holds details about reducers that are run
+type ReducerProfile struct {
+	// Label is a string naming the reducer.
+	// For reducers that implement ReducerLabeler it's the string that's returned,
+	// otherwise it's a string derived from the reducer's type.
+	Label string
+
+	// Action is the action that was dispatched
+	Action Action
+
+	// Start is the time when the reducer was called
+	Start time.Time
+
+	// End is the time when the reducer returned
+	End time.Time
 }
 
 // newState create a new State object ensuring View is initialized correctly.
