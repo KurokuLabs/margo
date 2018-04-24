@@ -216,7 +216,7 @@ func TestBuiltinCmdsReduce(t *testing.T) {
 		},
 	}
 
-	bc := mg.BuiltinCmds{}
+	bc := mg.Builtins
 	state := bc.Reduce(ctx)
 	if state == nil {
 		t.Fatal("bc.Reduce() = nil, want *State")
