@@ -32,6 +32,10 @@ func (sf SnippetFuncs) Reduce(mx *mg.Ctx) *mg.State {
 
 	src, _ := mx.View.ReadAll()
 	pos := mx.View.Pos
+	if pos < 0 || pos > len(src) {
+		return mx.State
+	}
+
 	for {
 		r, n := utf8.DecodeLastRune(src[:pos])
 		if !IsLetter(r) {
