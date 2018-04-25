@@ -39,7 +39,7 @@ type Ctx struct {
 	// Action is the action that was dispatched.
 	// It's a hint telling reducers about some action that happened,
 	// e.g. that the view is about to be saved or that it was changed.
-	Action Action
+	Action Action `mg.Nillable:"true"`
 
 	// Store is the global store
 	Store *Store
@@ -48,7 +48,7 @@ type Ctx struct {
 	Log *Logger
 
 	// Parent, if set, is the Ctx that this object was copied from
-	Parent *Ctx
+	Parent *Ctx `mg.Nillable:"true"`
 
 	doneC      chan struct{}
 	cancelOnce *sync.Once
@@ -265,7 +265,7 @@ type EditorProps struct {
 	// Version is the editor's version
 	Version string
 
-	handle   codec.Handle
+	handle   codec.Handle `mg.Nillable:"true"`
 	settings codec.Raw
 }
 
@@ -312,7 +312,7 @@ type StickyState struct {
 	Editor EditorProps
 
 	// Config holds config data for the editor to use
-	Config EditorConfig
+	Config EditorConfig `mg.Nillable:"true"`
 }
 
 // State holds data about the state of the editor, and transformations made by reducers
