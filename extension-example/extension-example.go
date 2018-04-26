@@ -87,7 +87,7 @@ func Margo(ma mg.Args) {
 
 // DayTimeStatus adds the current day and time to the status bar
 var DayTimeStatus = mg.Reduce(func(mx *mg.Ctx) *mg.State {
-	if _, ok := mx.Action.(mg.Started); ok {
+	mx.Init(func() {
 		dispatch := mx.Store.Dispatch
 		// kick off the ticker when we start
 		go func() {
@@ -96,7 +96,7 @@ var DayTimeStatus = mg.Reduce(func(mx *mg.Ctx) *mg.State {
 				dispatch(mg.Render)
 			}
 		}()
-	}
+	})
 
 	// we always want to render the time
 	// otherwise it will sometimes disappear from the status bar
