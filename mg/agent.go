@@ -7,11 +7,9 @@ import (
 	"io"
 	"margo.sh/mgutil"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 )
 
 var (
@@ -101,40 +99,25 @@ type agentRes struct {
 }
 
 func (rs agentRes) finalize() interface{} {
-	type _ReducerProfile struct {
-		ReducerProfile
-		Action string
-		Start  string
-		End    string
-	}
-
 	out := struct {
+		_struct struct{} `codec:",omitempty"`
+
 		agentRes
 		State struct {
+			_struct struct{} `codec:",omitempty"`
+			Profiles,
+			Editor,
+			Env struct{}
+
 			State
 			Config        interface{}
 			ClientActions []clientActionType
-			Profiles      []_ReducerProfile
 		}
 	}{}
 	out.agentRes = rs
 	out.State.State = *rs.State
 	inSt := &out.State.State
 	outSt := &out.State
-
-	outSt.Profiles = make([]_ReducerProfile, len(inSt.Profiles))
-	for i, out := range outSt.Profiles {
-		in := inSt.Profiles[i]
-		out.ReducerProfile = in
-		if t := reflect.TypeOf(in.Action); t != nil {
-			out.Action = t.String()
-		} else {
-			out.Action = "mg.Render"
-		}
-		out.Start = in.Start.Format(time.RFC3339Nano)
-		out.End = in.End.Format(time.RFC3339Nano)
-		outSt.Profiles[i] = out
-	}
 
 	outSt.ClientActions = inSt.clientActions
 
