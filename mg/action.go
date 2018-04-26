@@ -69,7 +69,14 @@ var Render Action = nil
 
 // Started is dispatched to indicate the start of IPC communication.
 // It's the first action that is dispatched.
+//
 // Reducers may do lazy initialization during this action.
+//
+// Reducers should take care to make sure it's checked before returning
+// e.g. func() { if lang-doesn't-match { return }; if action-is-Started { init } }
+// will fail to init because it returns before initialisation
+//
+// Ctx.Init should be preferred as an alternative to the if-statement or type-switch
 type Started struct{ ActionType }
 
 type QueryCompletions struct{ ActionType }

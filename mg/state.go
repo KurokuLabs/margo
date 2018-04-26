@@ -76,6 +76,17 @@ func newCtx(sto *Store, st *State, act Action) *Ctx {
 	}
 }
 
+// Init calls calls f if .Action is `Started`.
+//
+// It should be preferred to handling `Started` directly and be called
+// before any returns in the reducer to avoid failure to initialise.
+func (mx *Ctx) Init(f func()) {
+	switch mx.Action.(type) {
+	case Started:
+		f()
+	}
+}
+
 // Deadline implements context.Context.Deadline
 func (*Ctx) Deadline() (time.Time, bool) {
 	return time.Time{}, false
