@@ -13,6 +13,7 @@ import (
 	"margo.sh/mg"
 	"margo.sh/sublime"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -41,11 +42,24 @@ type Gocode struct {
 }
 
 func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
-	st, gx := initGocodeReducer(mx, g)
+	st, gx := initGocodeReducer(mx, *g)
 	if gx == nil || !gx.query.completions {
 		return st
 	}
 
+	timeout := 250 * time.Millisecond
+	res := make(chan *mg.State, 1)
+	go g.reduce(mx, st, gx, res)
+	select {
+	case st := <-res:
+		return st
+	case <-time.After(timeout):
+		mx.Log.Println("gocode didn't respond after", timeout)
+		return st
+	}
+}
+
+func (g Gocode) reduce(mx *mg.Ctx, st *mg.State, gx *gocodeCtx, res chan *mg.State) {
 	candidates := gx.candidates()
 	completions := make([]mg.Completion, 0, len(candidates))
 	for _, v := range candidates {
@@ -53,10 +67,10 @@ func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
 			completions = append(completions, c)
 		}
 	}
-	return st.AddCompletions(completions...)
+	res <- st.AddCompletions(completions...)
 }
 
-func (g *Gocode) funcTitle(fx *ast.FuncType, buf *bytes.Buffer, decl string) string {
+func (g Gocode) funcTitle(fx *ast.FuncType, buf *bytes.Buffer, decl string) string {
 	// TODO: caching
 
 	buf.Reset()
@@ -88,7 +102,7 @@ func (g *Gocode) funcTitle(fx *ast.FuncType, buf *bytes.Buffer, decl string) str
 	return buf.String()
 }
 
-func (g *Gocode) funcSrc(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate, gx *gocodeCtx) string {
+func (g Gocode) funcSrc(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate, gx *gocodeCtx) string {
 	// TODO: caching
 	// TODO: only output the name, if we're in a call, assignment, etc. that takes a func
 
@@ -144,7 +158,7 @@ func printFields(w io.Writer, fset *token.FileSet, list []*ast.Field, printNames
 	}
 }
 
-func (g *Gocode) completion(mx *mg.Ctx, gx *gocodeCtx, v gocode.MargoCandidate) (c mg.Completion, ok bool) {
+func (g Gocode) completion(mx *mg.Ctx, gx *gocodeCtx, v gocode.MargoCandidate) (c mg.Completion, ok bool) {
 	buf := bytes.NewBuffer(nil)
 	if v.Class.String() == "PANIC" {
 		mx.Log.Printf("gocode panicked in '%s' at pos '%d'\n", gx.fn, gx.pos)
@@ -169,25 +183,25 @@ func (g *Gocode) completion(mx *mg.Ctx, gx *gocodeCtx, v gocode.MargoCandidate) 
 	return c, true
 }
 
-func (g *Gocode) compQuery(v gocode.MargoCandidate) string {
+func (g Gocode) compQuery(v gocode.MargoCandidate) string {
 	return v.Name
 }
 
-func (g *Gocode) compSrc(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate, gx *gocodeCtx) string {
+func (g Gocode) compSrc(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate, gx *gocodeCtx) string {
 	if fx == nil {
 		return v.Name
 	}
 	return g.funcSrc(fx, buf, v, gx)
 }
 
-func (g *Gocode) compTag(v gocode.MargoCandidate) mg.CompletionTag {
+func (g Gocode) compTag(v gocode.MargoCandidate) mg.CompletionTag {
 	if tag, ok := gocodeClassTags[v.Class.String()]; ok {
 		return tag
 	}
 	return mg.UnknownTag
 }
 
-func (g *Gocode) compTitle(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate) string {
+func (g Gocode) compTitle(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCandidate) string {
 	if fx != nil {
 		return g.funcTitle(fx, buf, v.Type)
 	}
@@ -197,7 +211,7 @@ func (g *Gocode) compTitle(fx *ast.FuncType, buf *bytes.Buffer, v gocode.MargoCa
 	return v.Type
 }
 
-func (g *Gocode) matchTests(c gocode.MargoCandidate) bool {
+func (g Gocode) matchTests(c gocode.MargoCandidate) bool {
 	return strings.HasPrefix(c.Name, "Test") ||
 		strings.HasPrefix(c.Name, "Benchmark") ||
 		strings.HasPrefix(c.Name, "Example")
@@ -217,7 +231,7 @@ type gocodeCtx struct {
 	}
 }
 
-func initGocodeReducer(mx *mg.Ctx, g *Gocode) (*mg.State, *gocodeCtx) {
+func initGocodeReducer(mx *mg.Ctx, g Gocode) (*mg.State, *gocodeCtx) {
 	st := mx.State
 	if !st.View.LangIs("go") {
 		return st, nil
