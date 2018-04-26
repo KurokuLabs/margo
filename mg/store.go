@@ -45,7 +45,7 @@ type Store struct {
 		sync.Mutex
 		storeReducers
 	}
-	cfg   EditorConfig
+	cfg   EditorConfig `mg.Nillable:"true"`
 	ag    *Agent
 	tasks *taskTracker
 	cache struct {
@@ -173,9 +173,9 @@ func newStore(ag *Agent, l Listener) *Store {
 	sto := &Store{
 		readyCh:  make(chan struct{}),
 		listener: l,
-		state:    newState(ag.Store),
 		ag:       ag,
 	}
+	sto.state = newState(sto)
 	sto.tasks = newTaskTracker(sto.Dispatch)
 	sto.After(sto.tasks)
 	return sto
