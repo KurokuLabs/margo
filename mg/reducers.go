@@ -36,7 +36,7 @@ func (r *restartSupport) Reduce(mx *Ctx) *State {
 	st := mx.State
 	switch act := mx.Action.(type) {
 	case ViewSaved:
-		go r.prepRestart(mx)
+		r.tryPrepRestart(mx)
 	case Restart:
 		mx.Log.Printf("%T action dispatched\n", mx.Action)
 		st = mx.addClientActions(clientRestart)
@@ -49,7 +49,13 @@ func (r *restartSupport) Reduce(mx *Ctx) *State {
 	return st.AddIssues(r.issues...)
 }
 
-func (_ restartSupport) prepRestart(mx *Ctx) {
+func (r *restartSupport) tryPrepRestart(mx *Ctx) {
+	v := mx.View
+	hasSfx := strings.HasSuffix
+	if !hasSfx(v.Path, ".go") || hasSfx(v.Path, "_test.go") {
+		return
+	}
+
 	dir := filepath.ToSlash(mx.View.Dir())
 	if !filepath.IsAbs(dir) {
 		return
@@ -63,6 +69,11 @@ func (_ restartSupport) prepRestart(mx *Ctx) {
 	if imp != "margo" && !strings.HasPrefix(imp+"/", "margo.sh/") {
 		return
 	}
+
+	go r.prepRestart(mx, dir)
+}
+
+func (r *restartSupport) prepRestart(mx *Ctx, dir string) {
 
 	pkg, _ := build.Default.ImportDir(dir, 0)
 	if pkg == nil || pkg.Name == "" {

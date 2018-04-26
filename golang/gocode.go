@@ -37,6 +37,7 @@ type Gocode struct {
 	AllowWordCompletions     bool
 	ShowFuncParams           bool
 	ShowFuncResultNames      bool
+	Debug                    bool
 }
 
 func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
@@ -275,6 +276,7 @@ func initGocodeReducer(mx *mg.Ctx, g *Gocode) (*mg.State, *gocodeCtx) {
 			ProposeBuiltins:    g.ProposeBuiltins,
 			Autobuild:          g.Autobuild,
 			UnimportedPackages: g.UnimportedPackages,
+			Debug:              g.Debug,
 		},
 	}
 	gx.query.completions = completions
