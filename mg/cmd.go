@@ -7,6 +7,7 @@ import (
 	"margo.sh/mgutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -196,9 +197,18 @@ func (p *Proc) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	name := filepath.Base(p.bx.Name)
+	args := make([]string, len(p.bx.Args))
+	for i, s := range p.bx.Args {
+		if filepath.IsAbs(s) {
+			s = filepath.Base(s)
+		}
+		args[i] = s
+	}
+
 	p.task = p.bx.Begin(Task{
 		CancelID: p.cid,
-		Title:    fmt.Sprintf("Proc`%s`", mgutil.QuoteCmd(p.bx.Name, p.bx.Args...)),
+		Title:    fmt.Sprintf("Proc`%s`", mgutil.QuoteCmd(name, args...)),
 		Cancel:   p.Cancel,
 	})
 	go p.dispatcher()
