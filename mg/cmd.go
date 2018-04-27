@@ -2,7 +2,6 @@ package mg
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"margo.sh/mgutil"
 	"os"
@@ -154,6 +153,8 @@ type RunCmd struct {
 }
 
 type Proc struct {
+	Title string
+
 	bx     *BultinCmdCtx
 	mu     sync.RWMutex
 	done   chan struct{}
@@ -174,11 +175,22 @@ func newProc(bx *BultinCmdCtx) *Proc {
 	cmd.Stdout = bx.Output
 	cmd.Stderr = bx.Output
 	cmd.SysProcAttr = pgSysProcAttr
+
+	name := filepath.Base(bx.Name)
+	args := make([]string, len(bx.Args))
+	for i, s := range bx.Args {
+		if filepath.IsAbs(s) {
+			s = filepath.Base(s)
+		}
+		args[i] = s
+	}
+
 	return &Proc{
-		done: make(chan struct{}),
-		bx:   bx,
-		cmd:  cmd,
-		cid:  bx.CancelID,
+		Title: "`" + mgutil.QuoteCmd(name, args...) + "`",
+		done:  make(chan struct{}),
+		bx:    bx,
+		cmd:   cmd,
+		cid:   bx.CancelID,
 	}
 }
 
@@ -197,18 +209,9 @@ func (p *Proc) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	name := filepath.Base(p.bx.Name)
-	args := make([]string, len(p.bx.Args))
-	for i, s := range p.bx.Args {
-		if filepath.IsAbs(s) {
-			s = filepath.Base(s)
-		}
-		args[i] = s
-	}
-
 	p.task = p.bx.Begin(Task{
 		CancelID: p.cid,
-		Title:    fmt.Sprintf("Proc`%s`", mgutil.QuoteCmd(name, args...)),
+		Title:    p.Title,
 		Cancel:   p.Cancel,
 	})
 	go p.dispatcher()

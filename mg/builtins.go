@@ -3,7 +3,6 @@ package mg
 import (
 	"bytes"
 	"fmt"
-	"margo.sh/mgutil"
 	"os"
 	"sort"
 )
@@ -148,10 +147,12 @@ func (bx *BultinCmdCtx) RunProc() {
 		err = p.Wait()
 	}
 	if err != nil {
-		fmt.Fprintf(bx.Output, "`%s` exited: %s\n", mgutil.QuoteCmd(bx.Name, bx.Args...), err)
+		fmt.Fprintf(bx.Output, "`%s` exited: %s\n", p.Title, err)
 	}
 }
 
+// StartProc creates a new Proc and starts the underlying process.
+// It always returns an initialised Proc.
 func (bx *BultinCmdCtx) StartProc() (*Proc, error) {
 	p := newProc(bx)
 	return p, p.start()
