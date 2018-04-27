@@ -61,29 +61,62 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
+	mx.Init(tr.start)
+
 	st := mx.State
 	switch mx.Action.(type) {
-	case Started:
-		tr.start()
 	case Shutdown:
-		for _, t := range tr.tickets {
-			t.Cancel()
-		}
+		go tr.shutdown(mx)
 	case RunCmd:
-		st = st.AddBuiltinCmds(BultinCmd{
-			Name: ".kill",
-			Desc: "List and cancel active tasks",
-			Run:  tr.killBuiltin,
-		})
+		st = tr.runCmd(st)
+	case QueryUserCmds:
+		st = tr.userCmds(st)
 	case taskTick:
-		if len(tr.tickets) != 0 {
-			tr.resetTimer()
-		}
+		tr.tick()
 	}
 	if s := tr.status(); s != "" {
 		st = st.AddStatus(s)
 	}
 	return st
+}
+
+func (tr *taskTracker) tick() {
+	if len(tr.tickets) != 0 {
+		tr.resetTimer()
+	}
+}
+
+func (tr *taskTracker) userCmds(st *State) *State {
+	cl := make([]UserCmd, len(tr.tickets))
+	for i, t := range tr.tickets {
+		c := UserCmd{
+			Title: "Cancel " + t.Title,
+			Name:  ".kill",
+		}
+		for _, s := range []string{t.CancelID, t.ID} {
+			if s != "" {
+				c.Args = append(c.Args, s)
+			}
+		}
+		cl[i] = c
+	}
+	return st.AddUserCmds(cl...)
+}
+
+func (tr *taskTracker) runCmd(st *State) *State {
+	return st.AddBuiltinCmds(
+		BultinCmd{
+			Name: ".kill",
+			Desc: "List and cancel active tasks",
+			Run:  tr.killBuiltin,
+		},
+	)
+}
+
+func (tr *taskTracker) shutdown(mx *Ctx) {
+	for _, t := range tr.tickets {
+		t.Cancel()
+	}
 }
 
 // Cancel cancels the task tid.
