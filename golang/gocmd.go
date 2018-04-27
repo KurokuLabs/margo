@@ -66,7 +66,14 @@ func (gc *GoCmd) playBuiltin(bx *mg.BultinCmdCtx) *mg.State {
 }
 
 func (gc *GoCmd) replayBuiltin(bx *mg.BultinCmdCtx) *mg.State {
-	go gc.playTool(bx, "go.replay")
+	v := bx.View
+	cid := ""
+	if v.Path == "" {
+		cid = v.Name
+	} else {
+		cid = v.Dir()
+	}
+	go gc.playTool(bx, "go.replay`"+cid+"`")
 	return bx.State
 }
 
