@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/ugorji/go/codec"
-	"go/build"
-	"margo.sh/misc/pprof/pprofdo"
-	"path/filepath"
+	"margo.sh/misc/pf"
 	"reflect"
-	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -30,8 +26,8 @@ var (
 // of its fields or the fields of any of its members.
 // If a field must be updated, you should use one of the methods like Copy
 //
-// Apart from Action and Parent, no other field will ever be nil
-// and if updates, no field should be set to nil
+// Unless a field is tagged with `mg.Nillable:"true"`, it will never be nil
+// and if updated, no field should be set to nil
 type Ctx struct {
 	// State is the current state of the world
 	*State
@@ -47,8 +43,9 @@ type Ctx struct {
 	// Log is the global logger
 	Log *Logger
 
-	// Parent, if set, is the Ctx that this object was copied from
-	Parent *Ctx `mg.Nillable:"true"`
+	Cookie string
+
+	Profile *pf.Profile
 
 	doneC      chan struct{}
 	cancelOnce *sync.Once
@@ -57,33 +54,24 @@ type Ctx struct {
 
 // newCtx creates a new Ctx
 // if st is nil, the state will be set to the equivalent of Store.state.new()
-func newCtx(sto *Store, st *State, act Action) *Ctx {
+// if p is nil a new Profile will be created with cookie as its name
+func newCtx(sto *Store, st *State, act Action, cookie string, p *pf.Profile) *Ctx {
 	if st == nil {
 		st = sto.state.new()
 	}
+	if p == nil {
+		p = pf.NewProfile(cookie)
+	}
 	return &Ctx{
-		State:  st,
-		Action: act,
-
-		Store: sto,
-
-		Log: sto.ag.Log,
-
+		State:      st,
+		Action:     act,
+		Store:      sto,
+		Log:        sto.ag.Log,
+		Cookie:     cookie,
+		Profile:    p,
 		doneC:      make(chan struct{}),
 		cancelOnce: &sync.Once{},
-
-		handle: sto.ag.handle,
-	}
-}
-
-// Init calls calls f if .Action is `Started`.
-//
-// It should be preferred to handling `Started` directly and be called
-// before any returns in the reducer to avoid failure to initialise.
-func (mx *Ctx) Init(f func()) {
-	switch mx.Action.(type) {
-	case Started:
-		f()
+		handle:     sto.ag.handle,
 	}
 }
 
@@ -148,7 +136,6 @@ func (mx *Ctx) LangIs(names ...string) bool {
 // Updating the new Ctx via these functions is preferred to assigning to the new object
 func (mx *Ctx) Copy(updaters ...func(*Ctx)) *Ctx {
 	x := *mx
-	x.Parent = mx
 	mx = &x
 
 	for _, f := range updaters {
@@ -157,115 +144,19 @@ func (mx *Ctx) Copy(updaters ...func(*Ctx)) *Ctx {
 	return mx
 }
 
-// Begin stars a new task and returns its ticket
-func (mx *Ctx) Begin(t Task) *TaskTicket {
-	return mx.Store.Begin(t)
-}
-
-// A Reducer is the main method of state transitions in margo.
-// It takes as input a Ctx describing the current state of the world
-// and an Action describing some action that happened.
-// Based on this action, the reducer returns a new state of the world.
-//
-// Reducers are called sequentially in the order they were registered
-// with Store.Before(), Store.Use() or Store.After().
-//
-// A reducer should not call Store.State().
-//
-// Reducers should complete their work as quickly as possible,
-// ideally only updating the state and not doing any work in the reducer itself.
-// If a reducer is slow it might block the editor UI because some actions like
-// fmt'ing the view must wait for the new src before the user
-// can continue editing or saving the file.
-//
-// e.g. during the ViewFmt or ViewPreSave action, a reducer that knows how to
-// fmt the file might update the state to hold a fmt'd copy of the view's src.
-//
-// or it can implement a linter that kicks off a goroutine to try to compile
-// a package when one of its files are saved.
-//
-// The Reduce() function can be used to convert a function to a reducer.
-type Reducer interface {
-	Reduce(*Ctx) *State
-}
-
-// reducerList is a slice of reducers
-type reducerList []Reducer
-
-// ReduceCtx calls the reducers in the slice in order.
-// For each reducer ran, it adds a ReducerProfile to State.Profiles.
-// Additionally, each reducer is ran through pprofdo.Do with prefix label "margo.reduce"
-func (rl reducerList) ReduceCtx(mx *Ctx) *Ctx {
-	for _, r := range rl {
-		pf := ReducerProfile{
-			Action: mx.Action,
-			Label:  ReducerLabel(r),
-			Start:  time.Now(),
-		}
-		var st *State
-		pprofdo.Do(mx, []string{"margo.reduce", pf.Label}, func(context.Context) {
-			st = r.Reduce(mx)
-		})
-		pf.End = time.Now()
-		mx = mx.Copy(func(mx *Ctx) {
-			mx.State = st.Copy(func(st *State) {
-				l := st.Profiles
-				st.Profiles = append(l[:len(l):len(l)], pf)
-			})
-		})
-	}
+func (mx *Ctx) SetState(st *State) *Ctx {
+	mx = mx.Copy()
+	mx.State = st
 	return mx
 }
 
-// Reduce is the equivalent of calling ReduceCtx().State
-func (rl reducerList) Reduce(mx *Ctx) *State {
-	return rl.ReduceCtx(mx).State
+func (mx *Ctx) SetView(v *View) *Ctx {
+	return mx.SetState(mx.State.SetView(v))
 }
 
-// Add adds new reducers to the list. It returns a new list.
-func (rl reducerList) Add(reducers ...Reducer) reducerList {
-	return append(rl[:len(rl):len(rl)], reducers...)
-}
-
-// ReduceFunc wraps a function to be used as a reducer
-// New instances should ideally be created using the global Reduce() function
-type ReduceFunc struct {
-	// Func is the function to be used for the reducer
-	Func func(*Ctx) *State
-
-	// Label is an optional string that may be used as a pprof label.
-	// If unset, a name based on the Func type will be used.
-	Label string
-}
-
-// ReducerLabel implements ReducerLabeler
-func (rf ReduceFunc) ReducerLabel() string {
-	if s := rf.Label; s != "" {
-		return s
-	}
-	return reflect.TypeOf(rf).String()
-}
-
-// Reduce implements the Reducer interface, delegating to ReduceFunc.Func
-func (rf ReduceFunc) Reduce(mx *Ctx) *State {
-	return rf.Func(mx)
-}
-
-// Reduce converts a function to a reducer.
-// It uses a suitable label based on the file and line on which it is called.
-func Reduce(f func(*Ctx) *State) ReduceFunc {
-	_, fn, line, _ := runtime.Caller(1)
-	for _, gp := range strings.Split(build.Default.GOPATH, string(filepath.ListSeparator)) {
-		s := strings.TrimPrefix(fn, filepath.Clean(gp)+string(filepath.Separator))
-		if s != fn {
-			fn = filepath.ToSlash(s)
-			break
-		}
-	}
-	return ReduceFunc{
-		Func:  f,
-		Label: fmt.Sprintf("%s:%d", fn, line),
-	}
+// Begin stars a new task and returns its ticket
+func (mx *Ctx) Begin(t Task) *TaskTicket {
+	return mx.Store.Begin(t)
 }
 
 // EditorProps holds data about the text editor
@@ -368,60 +259,21 @@ type State struct {
 	// It's usually populated during the QueryUserCmds action.
 	UserCmds []UserCmd
 
-	// Profiles is a list of reducer profiles for reducers that have already ran
-	Profiles []ReducerProfile
-
 	// clientActions is a list of client actions to dispatch in the editor
 	clientActions []clientActionType
 }
 
-// ReducerLabeler is the interface that describes reducers that label themselves
-type ReducerLabeler interface {
-	Reducer
-
-	// ReducerLabel returns a string that can be used to name the reducer
-	// in ReducerProfiles, pprof profiles and other display scenarios
-	ReducerLabel() string
-}
-
 // ActionLabel returns a label for the actions act.
-// It takes into account mg.Reducer being an alias for nil.
+// It takes into account mg.Render being an alias for nil.
 func ActionLabel(act Action) string {
-	if t := reflect.TypeOf(act); t != nil {
+	t := reflect.TypeOf(act)
+	if t != nil {
+		if s := act.ActionLabel(); s != "" {
+			return s
+		}
 		return t.String()
 	}
 	return "mg.Render"
-}
-
-// ReducerLabel returns a label for the reducer r.
-// It takes into account the ReducerLabeler interface.
-func ReducerLabel(r Reducer) string {
-	if r, ok := r.(ReducerLabeler); ok {
-		if lbl := r.ReducerLabel(); lbl != "" {
-			return lbl
-		}
-	}
-	if t := reflect.TypeOf(r); t != nil {
-		return t.String()
-	}
-	return "mg.Reducer"
-}
-
-// ReducerProfile holds details about reducers that are run
-type ReducerProfile struct {
-	// Label is a string naming the reducer.
-	// For reducers that implement ReducerLabeler it's the string that's returned,
-	// otherwise it's a string derived from the reducer's type.
-	Label string
-
-	// Action is the action that was dispatched
-	Action Action
-
-	// Start is the time when the reducer was called
-	Start time.Time
-
-	// End is the time when the reducer returned
-	End time.Time
 }
 
 // newState create a new State object ensuring View is initialized correctly.
@@ -500,6 +352,15 @@ func (st *State) SetSrc(src []byte) *State {
 	return st.Copy(func(st *State) {
 		st.View = st.View.SetSrc(src)
 	})
+}
+
+func (st *State) SetView(v *View) *State {
+	if st.View == v {
+		return st
+	}
+	st = st.Copy()
+	st.View = v
+	return st
 }
 
 // AddCompletions adds the completions in l to State.Completions

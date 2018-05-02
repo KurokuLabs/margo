@@ -42,18 +42,27 @@ func (ti *TaskTicket) Cancellable() bool {
 }
 
 type taskTracker struct {
-	mu       sync.Mutex
-	id       uint64
-	tickets  []*TaskTicket
-	timer    *time.Timer
-	dispatch Dispatcher
-	buf      bytes.Buffer
+	ReducerType
+	mu      sync.Mutex
+	id      uint64
+	tickets []*TaskTicket
+	timer   *time.Timer
+	buf     bytes.Buffer
 }
 
-func newTaskTracker(dispatch Dispatcher) *taskTracker {
-	return &taskTracker{
-		timer:    time.NewTimer(1 * time.Second),
-		dispatch: dispatch,
+func (tr *taskTracker) ReducerMount(mx *Ctx) {
+	tr.timer = time.NewTimer(1 * time.Second)
+	dispatch := mx.Store.Dispatch
+	go func() {
+		for range tr.timer.C {
+			dispatch(taskTick{})
+		}
+	}()
+}
+
+func (tr *taskTracker) ReducerUnmount(*Ctx) {
+	for _, t := range tr.tickets {
+		t.Cancel()
 	}
 }
 
@@ -61,12 +70,8 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	mx.Init(tr.start)
-
 	st := mx.State
 	switch mx.Action.(type) {
-	case Shutdown:
-		go tr.shutdown(mx)
 	case RunCmd:
 		st = tr.runCmd(st)
 	case QueryUserCmds:
@@ -234,14 +239,6 @@ func (tr *taskTracker) titles() (stale []string, fresh []string) {
 		}
 	}
 	return stale, fresh
-}
-
-func (tr *taskTracker) start() {
-	go func() {
-		for range tr.timer.C {
-			tr.dispatch(taskTick{})
-		}
-	}()
 }
 
 func (tr *taskTracker) resetTimer() {

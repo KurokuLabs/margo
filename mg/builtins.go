@@ -31,7 +31,7 @@ func (bcl BultinCmdList) Lookup(name string) (cmd BultinCmd, found bool) {
 }
 
 // BuiltinCmds implements various builtin commands.
-type builtins struct{}
+type builtins struct{ ReducerType }
 
 // ExecCmd implements the `.exec` builtin.
 func (b builtins) ExecCmd(bx *BultinCmdCtx) *State {

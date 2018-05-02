@@ -20,28 +20,32 @@ type gocodeCtAct struct {
 }
 
 type GocodeCalltips struct {
+	mg.ReducerType
+
 	q      *mgutil.ChanQ
 	status string
 }
 
+func (gc *GocodeCalltips) ReducerCond(mx *mg.Ctx) bool {
+	return mx.LangIs("go")
+}
+
+func (gc *GocodeCalltips) ReducerMount(mx *mg.Ctx) {
+	gc.q = mgutil.NewChanQ(1)
+	go gc.processer()
+}
+
+func (gc *GocodeCalltips) ReducerUnmount(mx *mg.Ctx) {
+	gc.q.Close()
+}
+
 func (gc *GocodeCalltips) Reduce(mx *mg.Ctx) *mg.State {
-	mx.Init(func() {
-		gc.q = mgutil.NewCtxQ(1)
-		go gc.processer()
-	})
-
 	st := mx.State
-	if !mx.LangIs("go") {
-		return st
-	}
-
 	if cfg, ok := st.Config.(sublime.Config); ok {
 		st = st.SetConfig(cfg.DisableCalltips())
 	}
 
 	switch act := mx.Action.(type) {
-	case mg.Shutdown:
-		gc.q.Close()
 	case mg.ViewPosChanged, mg.ViewActivated:
 		gc.q.Put(gocodeCtAct{mx: mx, status: gc.status})
 	case gocodeCtAct:
@@ -61,6 +65,8 @@ func (gc *GocodeCalltips) processer() {
 }
 
 func (gc *GocodeCalltips) process(act gocodeCtAct) {
+	defer func() { recover() }()
+
 	mx := act.mx
 	status := ""
 	defer func() {

@@ -5,20 +5,20 @@ import (
 	"testing"
 )
 
-func TestCtxQ(t *testing.T) {
+func TestChanQ(t *testing.T) {
 	for _, i := range []int{0, -1} {
-		name := fmt.Sprintf("NewCtxQ(%d)", i)
+		name := fmt.Sprintf("NewChanQ(%d)", i)
 		t.Run(name, func(t *testing.T) {
 			defer func() {
 				if v := recover(); v == nil {
 					t.Errorf("%s does not result in a panic", name)
 				}
 			}()
-			NewCtxQ(i)
+			NewChanQ(i)
 		})
 	}
 
-	cq := NewCtxQ(1)
+	cq := NewChanQ(1)
 	lastVal := -1
 	for i := 0; i < 3; i++ {
 		lastVal = i

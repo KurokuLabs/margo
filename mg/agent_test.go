@@ -81,26 +81,13 @@ func TestFirstAction(t *testing.T) {
 	}
 
 	actions := make(chan Action, 1)
-	ag.Store.Use(Reduce(func(mx *Ctx) *State {
+	ag.Store.Use(NewReducer(func(mx *Ctx) *State {
 		select {
 		case actions <- mx.Action:
 		default:
 		}
 		return mx.State
 	}))
-
-	// there is a small chance that some other package might dispatch an action
-	// before we're ready e.g. in init()
-	type impossibru struct{ ActionType }
-	ag.Store.Dispatch(impossibru{})
-
-	go ag.Run()
-	act := <-actions
-	switch act.(type) {
-	case Started:
-	default:
-		t.Errorf("Expected first action to be `%T`, but it was %T\n", Started{}, act)
-	}
 }
 
 type readWriteCloseStub struct {
@@ -137,7 +124,7 @@ func TestAgentShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent creation: err = (%#v); want (nil)", err)
 	}
-	ag.Store = newStore(ag, ag.listener)
+	ag.Store = newStore(ag, ag.sub)
 	err = ag.Run()
 	if err != nil {
 		t.Fatalf("ag.Run() = (%#v); want (nil)", err)

@@ -116,7 +116,7 @@ type CmdOutput struct {
 	Close  bool
 }
 
-type cmdSupport struct{}
+type cmdSupport struct{ ReducerType }
 
 func (cs *cmdSupport) Reduce(mx *Ctx) *State {
 	switch act := mx.Action.(type) {
