@@ -17,7 +17,13 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["blake2b"]
-  revision = "b49d69b5da943f7ef3c9cf91c8777c1f78a0cc3c"
+  revision = "2c241ca3045ddc354463c376a9515d9f1f1390a4"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["cpu"]
+  revision = "78d5f264b493f125018180c204871ecf58a2dce1"
 
 [solve-meta]
   analyzer-name = "dep"
