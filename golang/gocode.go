@@ -11,6 +11,7 @@ import (
 	"io"
 	"margo.sh/golang/internal/gocode"
 	"margo.sh/mg"
+	"margo.sh/misc/pf"
 	"margo.sh/sublime"
 	"strings"
 	"time"
@@ -28,7 +29,28 @@ var (
 	}
 )
 
+type gocodeReq struct {
+	g   *Gocode
+	mx  *mg.Ctx
+	st  *mg.State
+	gx  *gocodeCtx
+	res chan *mg.State
+}
+
+func (gr *gocodeReq) reduce() *mg.State {
+	candidates := gr.gx.candidates()
+	completions := make([]mg.Completion, 0, len(candidates))
+	for _, v := range candidates {
+		if c, ok := gr.g.completion(gr.mx, gr.gx, v); ok {
+			completions = append(completions, c)
+		}
+	}
+	return gr.st.AddCompletions(completions...)
+}
+
 type Gocode struct {
+	mg.ReducerType
+
 	InstallSuffix            string
 	ProposeBuiltins          bool
 	ProposeTests             bool
@@ -39,35 +61,82 @@ type Gocode struct {
 	ShowFuncParams           bool
 	ShowFuncResultNames      bool
 	Debug                    bool
+
+	reqs chan gocodeReq
+}
+
+func (g *Gocode) ReducerConfig(mx *mg.Ctx) mg.EditorConfig {
+	cfg, ok := mx.Config.(sublime.Config)
+	if !ok {
+		return nil
+	}
+
+	cfg = cfg.DisableGsComplete()
+	if !g.AllowExplicitCompletions {
+		cfg = cfg.InhibitExplicitCompletions()
+	}
+	if !g.AllowWordCompletions {
+		cfg = cfg.InhibitWordCompletions()
+	}
+	return cfg
+}
+
+func (g *Gocode) ReducerCond(mx *mg.Ctx) bool {
+	return mx.LangIs("go") && mx.ActionIs(mg.QueryCompletions{})
+}
+
+func (g *Gocode) ReducerMount(mx *mg.Ctx) {
+	g.reqs = make(chan gocodeReq)
+	go func() {
+		for gr := range g.reqs {
+			gr.res <- gr.reduce()
+		}
+	}()
+}
+
+func (g *Gocode) ReducerUnmount(mx *mg.Ctx) {
+	close(g.reqs)
 }
 
 func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
+	start := time.Now()
 	st, gx := initGocodeReducer(mx, *g)
-	if gx == nil || !gx.query.completions {
+	if gx == nil {
 		return st
 	}
 
-	timeout := 250 * time.Millisecond
-	res := make(chan *mg.State, 1)
-	go g.reduce(mx, st, gx, res)
+	qTimeout := 100 * time.Millisecond
+	gr := gocodeReq{
+		g:   g,
+		mx:  mx,
+		st:  st,
+		gx:  gx,
+		res: make(chan *mg.State, 1),
+	}
 	select {
-	case st := <-res:
-		return st
-	case <-time.After(timeout):
-		mx.Log.Println("gocode didn't respond after", timeout)
+	case g.reqs <- gr:
+	case <-time.After(qTimeout):
+		mx.Log.Println("gocode didn't accept the request after", pf.D(time.Since(start)))
 		return st
 	}
-}
 
-func (g Gocode) reduce(mx *mg.Ctx, st *mg.State, gx *gocodeCtx, res chan *mg.State) {
-	candidates := gx.candidates()
-	completions := make([]mg.Completion, 0, len(candidates))
-	for _, v := range candidates {
-		if c, ok := g.completion(mx, gx, v); ok {
-			completions = append(completions, c)
-		}
+	pTimeout := 150 * time.Millisecond
+	if d := qTimeout - time.Since(start); d > 0 {
+		pTimeout += d
 	}
-	res <- st.AddCompletions(completions...)
+
+	select {
+	case st := <-gr.res:
+		return st
+	case <-time.After(pTimeout):
+		go func() {
+			<-gr.res
+			mx.Log.Println("gocode eventually responded after", pf.Since(start))
+		}()
+
+		mx.Log.Println("gocode didn't respond after", pf.D(pTimeout), "taking", pf.Since(start))
+		return st
+	}
 }
 
 func (g Gocode) funcTitle(fx *ast.FuncType, buf *bytes.Buffer, decl string) string {
@@ -219,49 +288,22 @@ func (g Gocode) matchTests(c gocode.MargoCandidate) bool {
 
 type gocodeCtx struct {
 	Gocode
-	cn    *CursorNode
-	fn    string
-	src   []byte
-	pos   int
-	bctx  *build.Context
-	cfg   gocode.MargoConfig
-	query struct {
-		completions bool
-		tooltips    bool
-	}
+	cn   *CursorNode
+	fn   string
+	src  []byte
+	pos  int
+	bctx *build.Context
+	cfg  gocode.MargoConfig
 }
 
 func initGocodeReducer(mx *mg.Ctx, g Gocode) (*mg.State, *gocodeCtx) {
 	st := mx.State
-	if !st.View.LangIs("go") {
-		return st, nil
-	}
-
-	if cfg, ok := st.Config.(sublime.Config); ok {
-		cfg = cfg.DisableGsComplete()
-		if !g.AllowExplicitCompletions {
-			cfg = cfg.InhibitExplicitCompletions()
-		}
-		if !g.AllowWordCompletions {
-			cfg = cfg.InhibitWordCompletions()
-		}
-		st = st.SetConfig(cfg)
-	}
-
-	// TODO: use QueryCompletions.Pos when support is added
-	_, tooltips := mx.Action.(mg.QueryTooltips)
-	_, completions := mx.Action.(mg.QueryCompletions)
-	if !completions && !tooltips {
-		return st, nil
-	}
-
 	bctx := BuildContext(mx)
 	src, _ := st.View.ReadAll()
 	if len(src) == 0 {
 		return st, nil
 	}
 	pos := clampSrcPos(src, st.View.Pos)
-	pos = mg.BytePos(src, pos)
 
 	cx := NewCompletionCtx(mx, src, pos)
 	if cx.Scope.Any(PackageScope, FileScope) {
@@ -293,8 +335,6 @@ func initGocodeReducer(mx *mg.Ctx, g Gocode) (*mg.State, *gocodeCtx) {
 			Debug:              g.Debug,
 		},
 	}
-	gx.query.completions = completions
-	gx.query.tooltips = tooltips
 	return st, gx
 }
 

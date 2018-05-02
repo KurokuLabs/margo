@@ -6,7 +6,7 @@ import (
 )
 
 func Margo(ma mg.Args) {
-	ma.Store.Use(mg.Reduce(func(mx *mg.Ctx) *mg.State {
+	ma.Store.Use(mg.NewReducer(func(mx *mg.Ctx) *mg.State {
 		ctrl := "ctrl"
 		if runtime.GOOS == "darwin" {
 			ctrl = "super"

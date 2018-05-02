@@ -6,10 +6,12 @@ import (
 	"github.com/ugorji/go/codec"
 	"io"
 	"margo.sh/mgutil"
+	"margo.sh/misc/pf"
 	"os"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -82,13 +84,23 @@ type agentReq struct {
 	Cookie  string
 	Actions []agentReqAction
 	Props   clientProps
+	Sent    string
+	Profile *pf.Profile
 }
 
 func newAgentReq(kvs KVStore) *agentReq {
-	return &agentReq{Props: makeClientProps(kvs)}
+	return &agentReq{
+		Props:   makeClientProps(kvs),
+		Profile: pf.NewProfile(""),
+	}
 }
 
 func (rq *agentReq) finalize(ag *Agent) {
+	rq.Profile.SetName(rq.Cookie)
+	const layout = "2006-01-02T15:04:05.000000"
+	if t, err := time.ParseInLocation(layout, rq.Sent, time.UTC); err == nil {
+		rq.Profile.Sample("ipc|transport", time.Since(t))
+	}
 	rq.Props.finalize(ag)
 }
 
@@ -105,7 +117,7 @@ func (rs agentRes) finalize() interface{} {
 		agentRes
 		State struct {
 			_struct struct{} `codec:",omitempty"`
-			Profiles,
+			Profile,
 			Editor,
 			Env struct{}
 
@@ -114,7 +126,12 @@ func (rs agentRes) finalize() interface{} {
 			ClientActions []clientActionType
 		}
 	}{}
+
 	out.agentRes = rs
+	if rs.State == nil {
+		return out
+	}
+
 	out.State.State = *rs.State
 	inSt := &out.State.State
 	outSt := &out.State
@@ -169,33 +186,35 @@ func (ag *Agent) Run() error {
 }
 
 func (ag *Agent) communicate() error {
-	ag.Log.Println("started")
-	ag.Store.dispatch(Started{})
-	ag.Store.ready()
+	sto := ag.Store
+	unsub := sto.Subscribe(ag.sub)
+	defer unsub()
+
+	sto.mount()
 
 	for {
-		rq := newAgentReq(ag.Store)
+		rq := newAgentReq(sto)
 		if err := ag.dec.Decode(rq); err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return fmt.Errorf("ipc.decode: %s", err)
 		}
+
 		rq.finalize(ag)
 		ag.handleReq(rq)
 	}
 }
 
 func (ag *Agent) handleReq(rq *agentReq) {
+	rq.Profile.Push("queue.wait")
 	ag.wg.Add(1)
-	defer ag.wg.Done()
+	ag.Store.dsp.hi <- func() {
+		defer ag.wg.Done()
+		rq.Profile.Pop()
 
-	// TODO: put this on a channel in the future.
-	// at the moment we lock the store and block new requests to maintain request/response order
-	// but decoding time could become a problem if we start sending large requests from the client
-	// we currently only have 1 client (GoSublime) that we also control so it's ok for now...
-
-	ag.Store.syncRq(ag, rq)
+		ag.Store.handleReq(rq)
+	}
 }
 
 func (ag *Agent) createAction(ra agentReqAction, h codec.Handle) (Action, error) {
@@ -205,8 +224,11 @@ func (ag *Agent) createAction(ra agentReqAction, h codec.Handle) (Action, error)
 	return nil, fmt.Errorf("Unknown action: %s", ra.Name)
 }
 
-func (ag *Agent) listener(st *State) {
-	err := ag.send(agentRes{State: st})
+func (ag *Agent) sub(mx *Ctx) {
+	err := ag.send(agentRes{
+		State:  mx.State,
+		Cookie: mx.Cookie,
+	})
 	if err != nil {
 		ag.Log.Println("agent.send failed. shutting down ipc:", err)
 		go ag.shutdown()
@@ -224,7 +246,7 @@ func (ag *Agent) send(res agentRes) error {
 // shutdown sequence:
 // * stop incoming requests
 // * wait for all reqs to complete
-// * tell reducers we're shutting down
+// * tell reducers to unmount
 // * stop outgoing responses
 // * tell the world we're done
 func (ag *Agent) shutdown() {
@@ -240,7 +262,7 @@ func (ag *Agent) shutdown() {
 	// defers because we want *some* guarantee that all these steps will be taken
 	defer close(sd.done)
 	defer ag.stdout.Close()
-	defer ag.Store.dispatch(Shutdown{})
+	defer ag.Store.unmount()
 	defer ag.wg.Wait()
 	defer ag.stdin.Close()
 }
@@ -288,13 +310,13 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		Writer: ag.stderr,
 	}
 	ag.Log = NewLogger(ag.stderr)
-	ag.Store = newStore(ag, ag.listener).
+	ag.Store = newStore(ag, ag.sub).
 		Before(defaultReducers.before...).
 		Use(defaultReducers.use...).
 		After(defaultReducers.after...)
 
 	if e := os.Getenv("MARGO_BUILD_ERROR"); e != "" {
-		ag.Store.Use(Reduce(func(mx *Ctx) *State {
+		ag.Store.Use(NewReducer(func(mx *Ctx) *State {
 			return mx.AddStatus(e)
 		}))
 	}

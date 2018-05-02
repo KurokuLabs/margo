@@ -5,7 +5,7 @@ import (
 	"margo.sh/mg"
 )
 
-type SyntaxCheck struct{}
+type SyntaxCheck struct{ mg.ReducerType }
 
 func (sc *SyntaxCheck) Reduce(mx *mg.Ctx) *mg.State {
 	if mx.LangIs("go") && mx.ActionIs(mg.ViewActivated{}, mg.ViewModified{}, mg.ViewSaved{}) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-type GoCmd struct{}
+type GoCmd struct{ mg.ReducerType }
 
 func (gc *GoCmd) Reduce(mx *mg.Ctx) *mg.State {
 	switch act := mx.Action.(type) {

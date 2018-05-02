@@ -5,6 +5,7 @@ import (
 	"margo.sh/mgutil"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // NewTestingAgent creates a new agent for testing
@@ -51,6 +52,11 @@ func checkNonNilVal(v reflect.Value, sel string, handler func(sel string)) {
 		checkNonNilVal(v.Elem(), sel, handler)
 	case kind == reflect.Struct:
 		typ := v.Type()
+		switch typ {
+		case reflect.TypeOf(time.Time{}):
+			return
+		}
+
 		for i := 0; i < v.NumField(); i++ {
 			f := v.Field(i)
 			t := typ.Field(i)

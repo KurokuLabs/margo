@@ -6,6 +6,8 @@ import (
 )
 
 type JsonFmt struct {
+	mg.ReducerType
+
 	Prefix string
 	Indent string
 }

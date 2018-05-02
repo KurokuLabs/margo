@@ -52,9 +52,9 @@ func (q *ChanQ) Close() {
 	close(q.c)
 }
 
-// NewCtxQ creates a new ChanQ
+// NewChanQ creates a new ChanQ
 // if cap is less than 1, it panics
-func NewCtxQ(cap int) *ChanQ {
+func NewChanQ(cap int) *ChanQ {
 	if cap < 1 {
 		panic("ChanQ cap must be greater than, or equal to, one")
 	}
