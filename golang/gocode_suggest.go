@@ -9,6 +9,7 @@ import (
 	"golang.org/x/tools/go/gcexportdata"
 	"margo.sh/mg"
 	"runtime"
+	"runtime/debug"
 	"sync"
 )
 
@@ -63,6 +64,12 @@ func (gsu *gcSuggest) candidates(mx *mg.Ctx) []suggest.Candidate {
 	defer mx.Profile.Push("candidates").Pop()
 	gsu.Lock()
 	defer gsu.Unlock()
+
+	defer func() {
+		if e := recover(); e != nil {
+			mx.Log.Printf("gocode/suggest panic: %s\n%s\n", e, debug.Stack())
+		}
+	}()
 
 	cfg := suggest.Config{
 		Importer: gsu.importer(mx),
