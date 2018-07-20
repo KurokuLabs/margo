@@ -72,8 +72,9 @@ func (gsu *gcSuggest) candidates(mx *mg.Ctx) []suggest.Candidate {
 	}()
 
 	cfg := suggest.Config{
-		Importer: gsu.importer(mx),
-		Builtin:  gsu.ProposeBuiltins,
+		Importer:   gsu.importer(mx),
+		Builtin:    gsu.ProposeBuiltins,
+		IgnoreCase: true,
 	}
 	if gsu.Debug {
 		cfg.Logf = func(f string, a ...interface{}) {
