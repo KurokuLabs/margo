@@ -154,8 +154,24 @@ func (cx *CmdCtx) StartProc() (*Proc, error) {
 	return p, p.start()
 }
 
+// BultinCmdRunFunc is the BuiltinCmd.Run function
+//
+// Where possible, implementations should prefer to do real work in a goroutine.
+type BultinCmdRunFunc func(*CmdCtx) *State
+
 type BultinCmd struct {
 	Name string
 	Desc string
-	Run  func(*CmdCtx) *State
+	Run  BultinCmdRunFunc
+}
+
+// ExecRunFunc returns a BuiltinCMd.Run function that wraps Builtins.ExecCmd
+// It sets the received CmdCtx.RunCmd's Name and Args fields
+func ExecRunFunc(name string, args ...string) BultinCmdRunFunc {
+	return func(cx *CmdCtx) *State {
+		x := *cx
+		x.RunCmd.Name = name
+		x.RunCmd.Args = args
+		return Builtins.ExecCmd(&x)
+	}
 }
