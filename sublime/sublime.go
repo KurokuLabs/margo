@@ -9,7 +9,7 @@ import (
 	"margo.sh/cmdpkg/margo/cmdrunner"
 	"margo.sh/mg"
 	"margo.sh/mgcli"
-	"margo.sh/why_would_you_make_yotsuba_cry"
+	yotsuba "margo.sh/why_would_you_make_yotsuba_cry"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,8 +33,9 @@ var (
 		},
 	}
 
-	logger    = mg.NewLogger(os.Stderr)
-	agentBctx = why_would_you_make_yotsuba_cry.AgentBuildContext
+	logger        = mg.NewLogger(os.Stderr)
+	agentBuildCtx = yotsuba.AgentBuildContext
+	agentBuildEnv = yotsuba.AgentBuildEnv
 )
 
 func buildAction(c *cli.Context) error {
@@ -49,7 +50,7 @@ func buildAction(c *cli.Context) error {
 	} else {
 		errs = append(errs,
 			fmt.Sprintf("*Not* using margo extension: Error: %s", err),
-			fmt.Sprintf("agent GOPATH is %s", agentBctx.GOPATH),
+			fmt.Sprintf("agent GOPATH is %s", agentBuildCtx.GOPATH),
 		)
 	}
 
@@ -76,7 +77,7 @@ func goInstallAgent(tags string) error {
 	if os.Getenv("MARGO_BUILD_FLAGS_RACE") == "1" {
 		args = append(args, "-race")
 	}
-	for _, tag := range agentBctx.ReleaseTags {
+	for _, tag := range agentBuildCtx.ReleaseTags {
 		if tag == "go1.10" {
 			args = append(args, "-i")
 			break
@@ -87,15 +88,13 @@ func goInstallAgent(tags string) error {
 		Name:     "go",
 		Args:     args,
 		OutToErr: true,
-		Env: map[string]string{
-			"GOPATH": agentBctx.GOPATH,
-		},
+		Env:      agentBuildEnv,
 	}
 	return cr.Run()
 }
 
 func extensionPkg() (*build.Package, error) {
-	pkg, err := agentBctx.Import("margo", "", 0)
+	pkg, err := agentBuildCtx.Import("margo", "", 0)
 	if err == nil && len(pkg.GoFiles) == 0 {
 		err = fmt.Errorf("%s imported but has no .go files", pkg.Dir)
 	}
