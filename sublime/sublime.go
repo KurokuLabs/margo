@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -38,22 +39,28 @@ var (
 
 func buildAction(c *cli.Context) error {
 	tags := "margo"
+	errs := []string{}
+
 	pkg, err := extensionPkg()
 	if err == nil {
 		fixExtPkg(pkg)
 		tags = "margo margo_extension"
 		fmt.Fprintln(os.Stderr, "Using margo extension:", pkg.Dir)
 	} else {
-		err = fmt.Errorf("*Not* using margo extension: %s\nagent GOPATH is %s", err, agentBctx.GOPATH)
+		errs = append(errs,
+			fmt.Sprintf("*Not* using margo extension: Error: %s", err),
+			fmt.Sprintf("agent GOPATH is %s", agentBctx.GOPATH),
+		)
 	}
 
-	if e := goInstallAgent(tags); e != nil {
-		err = fmt.Errorf("%s\n%s", e, err)
+	if err := goInstallAgent(tags); err != nil {
+		errs = append(errs, fmt.Sprintf("Error: %s", err))
 	}
-	if err != nil {
-		err = fmt.Errorf("check console for errors\n%s", err)
+
+	if len(errs) == 0 {
+		return nil
 	}
-	return err
+	return fmt.Errorf("check console for errors\n%s", strings.Join(errs, "\n"))
 }
 
 func runAction(c *cli.Context) error {
