@@ -21,6 +21,7 @@ type gsImpKey struct {
 type gsuOpts struct {
 	ProposeBuiltins bool
 	Debug           bool
+	Source          bool
 }
 
 type gcSuggest struct {
@@ -44,6 +45,8 @@ func (gsu *gcSuggest) init() {
 func (gsu *gcSuggest) newImporter() types.ImporterFrom {
 	// TODO: switch to source importer only
 	switch {
+	case gsu.Source:
+		return importer.For("source", nil).(types.ImporterFrom)
 	case runtime.Compiler == "gc":
 		return gcexportdata.NewImporter(token.NewFileSet(), map[string]*types.Package{})
 	default:

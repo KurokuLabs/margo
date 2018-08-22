@@ -53,6 +53,11 @@ func Margo(m mg.Args) {
 		// use gocode for autocompletion
 		// gs: this replaces the `gscomplete_enabled` setting
 		&golang.Gocode{
+			// Whether or not to do gocode completion using source code
+			// instead of the pre-compiled package files.
+			// Using source is often slower but offer more up-to-date completions.
+			Source: false,
+
 			// show the function parameters. this can take up a lot of space
 			ShowFuncParams: true,
 
@@ -67,7 +72,12 @@ func Margo(m mg.Args) {
 
 		// show func arguments/calltips in the status bar
 		// gs: this replaces the `calltips` setting
-		&golang.GocodeCalltips{},
+		&golang.GocodeCalltips{
+			// Whether or not to do gocode completion using source code
+			// instead of the pre-compiled package files.
+			// Using source is often slower but offer more accurate completions.
+			Source: false,
+		},
 
 		// use guru for goto-definition
 		// new commands `goto.definition` and `guru.definition` are defined
