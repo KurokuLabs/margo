@@ -121,6 +121,8 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 		return p, nil
 	}
 
+	defer gi.mx.Profile.Push(impPath).Pop()
+
 	bpkg, err := gi.bld.Import(impPath, srcDir, 0)
 	if err != nil {
 		gi.gsu.dbgf(gi.mx, "build.Import(%q, %q): %s\n", impPath, srcDir, err)
@@ -136,7 +138,7 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 	}
 
 	p, err := imp.ImportFrom(impPath, srcDir, mode)
-	if err == nil && p.Complete() {
+	if err == nil && p.Complete() && bpkg.Goroot {
 		cache[impKey] = p
 	}
 	if err != nil {
