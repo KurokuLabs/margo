@@ -98,13 +98,16 @@ func Margo(m mg.Args) {
 		//     `comp_lint_commands`, `gslint_timeout`, `lint_enabled`, `linters`
 		&golang.SyntaxCheck{},
 
-		// run `go install` on save
-		// or use GoInstallDiscardBinaries which will additionally set $GOBIN
-		// to a temp directory so binaries are not installed into your $PATH
-		//
-		// golang.GoInstall(),
+		// run `go install -i` on save
+		// golang.GoInstall("-i"),
 		// or
-		// golang.GoInstallDiscardBinaries(),
+		// golang.GoInstallDiscardBinaries("-i"),
+		//
+		// GoInstallDiscardBinaries will additionally set $GOBIN
+		// to a temp directory so binaries are not installed into your $GOPATH/bin
+		//
+		// the -i flag is used to install imported packages as well
+		// it's only supported in go1.10 or newer
 
 		// run `go vet` on save. go vet is ran automatically as part of `go test` in go1.10
 		// golang.GoVet(),
