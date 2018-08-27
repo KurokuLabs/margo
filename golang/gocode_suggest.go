@@ -209,7 +209,7 @@ func (gi *gsuImporter) pkgInfo(impPath, srcDir string) (gsuPkgInfo, error) {
 	return gsuPkgInfo{
 		Path: bpkg.ImportPath,
 		Dir:  bpkg.Dir,
-		Key:  mkMgcCacheKey(bpkg.Dir),
+		Key:  mkMgcCacheKey(gi.gsu.Source, bpkg.Dir),
 		Std:  bpkg.Goroot,
 	}, nil
 }
