@@ -17,9 +17,14 @@ var (
 // it's the abs path of the package directory
 type mgcCacheKey string
 
-func mkMgcCacheKey(dir string) mgcCacheKey {
+func mkMgcCacheKey(source bool, dir string) mgcCacheKey {
 	dir = filepath.Clean(dir)
 	dir = filepath.ToSlash(dir)
+	if source {
+		dir = "SRC:" + dir
+	} else {
+		dir = "BIN:" + dir
+	}
 	return mgcCacheKey(dir)
 }
 
