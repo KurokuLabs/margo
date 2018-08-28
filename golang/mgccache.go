@@ -44,6 +44,9 @@ func (mc *mgcCache) get(k mgcCacheKey) (mgcCacheEnt, bool) {
 	defer mc.RUnlock()
 
 	e, ok := mc.m[k]
+	if !ok {
+		mgcDbgf("cache.miss: %s\n", k)
+	}
 	return e, ok
 }
 
