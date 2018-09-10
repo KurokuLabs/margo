@@ -96,6 +96,10 @@ func (g *Gocode) ReducerConfig(mx *mg.Ctx) mg.EditorConfig {
 	return cfg
 }
 
+func (g *Gocode) ReducerInit(mx *mg.Ctx) {
+	mctl.initOnce(mx)
+}
+
 func (g *Gocode) ReducerCond(mx *mg.Ctx) bool {
 	return mx.ActionIs(mg.QueryCompletions{}) && mx.LangIs(mg.Go)
 }
@@ -121,8 +125,6 @@ func (g *Gocode) ReducerUnmount(mx *mg.Ctx) {
 
 func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
 	start := time.Now()
-
-	g.gsu.imp.pruneCacheOnReduce(mx)
 
 	st, gx := initGocodeReducer(mx, *g)
 	if gx == nil {

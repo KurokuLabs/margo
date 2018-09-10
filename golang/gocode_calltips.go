@@ -35,6 +35,10 @@ type GocodeCalltips struct {
 	status string
 }
 
+func (gc *GocodeCalltips) ReducerInit(mx *mg.Ctx) {
+	mctl.initOnce(mx)
+}
+
 func (gc *GocodeCalltips) ReducerCond(mx *mg.Ctx) bool {
 	return mx.LangIs(mg.Go)
 }
@@ -53,8 +57,6 @@ func (gc *GocodeCalltips) ReducerUnmount(mx *mg.Ctx) {
 }
 
 func (gc *GocodeCalltips) Reduce(mx *mg.Ctx) *mg.State {
-	gc.gsu.imp.pruneCacheOnReduce(mx)
-
 	st := mx.State
 	if cfg, ok := st.Config.(sublime.Config); ok {
 		st = st.SetConfig(cfg.DisableCalltips())

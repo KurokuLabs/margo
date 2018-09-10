@@ -137,7 +137,6 @@ func (gi *gsuImporter) Import(path string) (*types.Package, error) {
 
 func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode) (*types.Package, error) {
 	mx, gsu := gi.mx, gi.gsu
-	pkgs := mgcSharedCache
 
 	defer mx.Profile.Push("gsuImport: " + impPath).Pop()
 
@@ -155,7 +154,7 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 
 	pkgInf, err := gi.pkgInfo(impPath, srcDir)
 	if err != nil {
-		mgcDbgf("pkgInfo(%q, %q): %s\n", impPath, srcDir, err)
+		mctl.dbgf("pkgInfo(%q, %q): %s\n", impPath, srcDir, err)
 		return nil, err
 	}
 
@@ -163,7 +162,7 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 		return types.Unsafe, nil
 	}
 
-	if e, ok := pkgs.get(pkgInf.Key); ok {
+	if e, ok := mctl.pkgs.get(pkgInf.Key); ok {
 		return e.Pkg, nil
 	}
 
@@ -172,9 +171,9 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 	impDur := time.Since(impStart)
 
 	if err == nil {
-		pkgs.put(mgcCacheEnt{Key: pkgInf.Key, Pkg: typPkg, Dur: impDur})
+		mctl.pkgs.put(mgcCacheEnt{Key: pkgInf.Key, Pkg: typPkg, Dur: impDur})
 	} else {
-		mgcDbgf("%T.ImportFrom(%q, %q): %s\n", underlying, impPath, srcDir, err)
+		mctl.dbgf("%T.ImportFrom(%q, %q): %s\n", underlying, impPath, srcDir, err)
 	}
 
 	return typPkg, err
@@ -208,7 +207,7 @@ func (gi *gsuImporter) pruneCacheOnReduce(mx *mg.Ctx) {
 		// which results in an updated package.a file
 
 		if pkgInf, err := gi.pkgInfo(".", mx.View.Dir()); err == nil {
-			mgcSharedCache.del(pkgInf.Key)
+			mctl.pkgs.del(pkgInf.Key)
 		}
 	}
 }

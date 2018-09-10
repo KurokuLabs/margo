@@ -3,6 +3,8 @@ package golang
 import (
 	"bytes"
 	"fmt"
+	"go/build"
+	"go/types"
 	"margo.sh/mg"
 	"margo.sh/mgpf"
 	"math"
@@ -15,35 +17,85 @@ import (
 )
 
 var (
-	mgcDbg = struct {
-		sync.RWMutex
-		f func(format string, a ...interface{})
-	}{}
+	mctl = &marGocodeCtl{}
 )
 
-func mgcDbgf(format string, a ...interface{}) {
-	mgcDbg.RLock()
-	defer mgcDbg.RUnlock()
+type marGocodeCtl struct {
+	pkgs *mgcCache
 
-	if f := mgcDbg.f; f != nil {
-		if !strings.HasSuffix(format, "\n") {
-			format += "\n"
-		}
-		f("margocode: "+format, a...)
+	initMu sync.RWMutex
+	inited bool
+	confed bool
+	cmdMap map[string]func(*mg.CmdCtx)
+
+	dbgMu sync.RWMutex
+	dbgF  func(format string, a ...interface{})
+	dbgP  func(*types.Package) bool
+}
+
+func (mgc *marGocodeCtl) subscriber(mx *mg.Ctx) {
+	switch mx.Action.(type) {
+	case mg.ViewModified, mg.ViewSaved:
+		// ViewSaved is probably not required, but saving might result in a `go install`
+		// which results in an updated package.a file
+		mgc.autoPruneCache(mx)
 	}
 }
 
-type MarGocodeCtl struct {
-	mg.ReducerType
+func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
+	// TODO: do this in a goroutine?
+	// we're not directly in the QueryCompletions hot path
+	// but we *are* in a subscriber, so we're blocking the store
+	// if something like pkginfo or DebugPrune is slow,
+	// we will end up blocking the next reduction
 
-	// Whether or not to print debugging info related to the gocode cache
-	// used by the Gocode and GocodeCalltips reducers
-	Debug bool
+	for _, source := range []bool{true, false} {
+		if pkgInf, err := mgc.pkgInfo(mx, source, ".", mx.View.Dir()); err == nil {
+			mgc.pkgs.del(pkgInf.Key)
+		}
+	}
 
-	cmdMap map[string]func(*mg.CmdCtx)
+	mgc.dbgMu.RLock()
+	defer mgc.dbgMu.RUnlock()
+
+	if dpr := mgc.dbgP; dpr != nil {
+		mgc.pkgs.forEach(func(e mgcCacheEnt) {
+			if dpr(e.Pkg) {
+				mgc.pkgs.del(e.Key)
+			}
+		})
+	}
 }
 
-func (mgc *MarGocodeCtl) ReducerInit(mx *mg.Ctx) {
+func (mgc *marGocodeCtl) confOnce(mx *mg.Ctx, ctl *MarGocodeCtl) {
+	mgc.initMu.Lock()
+	defer mgc.initMu.Unlock()
+
+	if mgc.confed {
+		return
+	}
+	mgc.confed = true
+
+	if ctl.Debug {
+		mgc.dbgMu.Lock()
+		mgc.dbgF = mx.Log.Dbg.Printf
+		mgc.dbgMu.Unlock()
+	}
+	mgc.dbgP = ctl.DebugPrune
+}
+
+func (mgc *marGocodeCtl) initOnce(mx *mg.Ctx) {
+	mgc.initMu.Lock()
+	defer mgc.initMu.Unlock()
+
+	if mgc.inited {
+		return
+	}
+	mgc.inited = true
+
+	go mx.Store.Subscribe(mgc.subscriber)
+
+	mgc.pkgs = &mgcCache{m: map[mgcCacheKey]mgcCacheEnt{}}
 	mgc.cmdMap = map[string]func(*mg.CmdCtx){
 		"help": mgc.helpCmd,
 		"cache-list-by-key": func(cx *mg.CmdCtx) {
@@ -58,26 +110,46 @@ func (mgc *MarGocodeCtl) ReducerInit(mx *mg.Ctx) {
 		},
 		"cache-prune": mgc.pruneCacheCmd,
 	}
-
-	if mgc.Debug {
-		mgcDbg.Lock()
-		mgcDbg.f = mx.Log.Dbg.Printf
-		mgcDbg.Unlock()
-	}
 }
 
-func (mgc *MarGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
-	st := mx.State
+func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string) (gsuPkgInfo, error) {
+	// TODO: cache these ops?
+	// it might not be worth the added complexity since we will get a lot of impPath=io
+	// with a different srcPath which means we have to look it up anyway.
+	//
+	// TODO: support go modules
+	// at this time, go/packages appears to be extremely slow
+	// it takes 100ms+ just to load the errors packages in LoadFiles mode
+	//
+	// in eiter case, in go1.11 we might end up calling `go list` which is very slow
 
-	switch mx.Action.(type) {
-	case mg.RunCmd:
-		st = st.AddBuiltinCmds(mgc.cmds()...)
+	bpkg, err := BuildContext(mx).Import(impPath, srcDir, build.FindOnly)
+	if err != nil {
+		return gsuPkgInfo{}, err
 	}
-
-	return st
+	return gsuPkgInfo{
+		Path: bpkg.ImportPath,
+		Dir:  bpkg.Dir,
+		Key:  mkMgcCacheKey(source, bpkg.Dir),
+		Std:  bpkg.Goroot,
+	}, nil
 }
 
-func (mgc *MarGocodeCtl) cmds() mg.BuiltinCmdList {
+func (mgc *marGocodeCtl) dbgf(format string, a ...interface{}) {
+	mgc.dbgMu.Lock()
+	defer mgc.dbgMu.Unlock()
+
+	if mgc.dbgF == nil {
+		return
+	}
+
+	if !strings.HasSuffix(format, "\n") {
+		format += "\n"
+	}
+	mgc.dbgF("margocode: "+format, a...)
+}
+
+func (mgc *marGocodeCtl) cmds() mg.BuiltinCmdList {
 	return mg.BuiltinCmdList{
 		mg.BuiltinCmd{
 			Name: "margocodectl",
@@ -87,10 +159,10 @@ func (mgc *MarGocodeCtl) cmds() mg.BuiltinCmdList {
 	}
 }
 
-func (mgc *MarGocodeCtl) listCacheCmd(cx *mg.CmdCtx, less func(ents []mgcCacheEnt, i, j int) bool) {
+func (mgc *marGocodeCtl) listCacheCmd(cx *mg.CmdCtx, less func(ents []mgcCacheEnt, i, j int) bool) {
 	defer cx.Output.Close()
 
-	ents := mgcSharedCache.entries()
+	ents := mctl.pkgs.entries()
 	if len(ents) == 0 {
 		fmt.Fprintln(cx.Output, "The cache is empty")
 		return
@@ -113,7 +185,7 @@ func (mgc *MarGocodeCtl) listCacheCmd(cx *mg.CmdCtx, less func(ents []mgcCacheEn
 	tbw.Write(buf.Bytes())
 }
 
-func (mgc *MarGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
+func (mgc *marGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
 	defer cx.Output.Close()
 
 	args := cx.Args
@@ -131,7 +203,7 @@ func (mgc *MarGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
 		}
 	}
 
-	ents := mgcSharedCache.prune(pats...)
+	ents := mctl.pkgs.prune(pats...)
 	for _, e := range ents {
 		fmt.Fprintln(cx.Output, "Pruned:", e.Key)
 	}
@@ -139,7 +211,7 @@ func (mgc *MarGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
 	debug.FreeOSMemory()
 }
 
-func (mgc *MarGocodeCtl) helpCmd(cx *mg.CmdCtx) {
+func (mgc *marGocodeCtl) helpCmd(cx *mg.CmdCtx) {
 	defer cx.Output.Close()
 
 	cx.Output.Write([]byte(`Usage: margocodectl $subcmd [args...]
@@ -149,7 +221,7 @@ func (mgc *MarGocodeCtl) helpCmd(cx *mg.CmdCtx) {
 `))
 }
 
-func (mgc *MarGocodeCtl) cmd(cx *mg.CmdCtx) *mg.State {
+func (mgc *marGocodeCtl) cmd(cx *mg.CmdCtx) *mg.State {
 	cmd := mgc.helpCmd
 	if len(cx.Args) > 0 {
 		sub := cx.Args[0]
@@ -164,4 +236,29 @@ func (mgc *MarGocodeCtl) cmd(cx *mg.CmdCtx) *mg.State {
 	}
 	go cmd(cx)
 	return cx.State
+}
+
+type MarGocodeCtl struct {
+	mg.ReducerType
+
+	// Whether or not to print debugging info related to the gocode cache
+	// used by the Gocode and GocodeCalltips reducers
+	Debug bool
+
+	// DebugPrune returns true if pkg should be removed from the cache
+	DebugPrune func(pkg *types.Package) bool
+}
+
+func (mgc *MarGocodeCtl) ReducerMount(mx *mg.Ctx) {
+	mctl.initOnce(mx)
+	mctl.confOnce(mx, mgc)
+}
+
+func (mgc *MarGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
+	switch mx.Action.(type) {
+	case mg.RunCmd:
+		return mx.AddBuiltinCmds(mctl.cmds()...)
+	default:
+		return mx.State
+	}
 }
