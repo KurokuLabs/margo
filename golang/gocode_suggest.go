@@ -208,8 +208,7 @@ func (gi *gsuImporter) importFrom(pkgInf gsuPkgInfo, mode types.ImportMode) (imp
 
 func (gi *gsuImporter) pkgInfo(impPath, srcDir string) (gsuPkgInfo, error) {
 	// TODO: support cache these ops?
-	// it might not be worth the added complexity since we will get a lot of impPath=io
-	// with a different srcPath which means we have to look it up anyway.
+	// at least on the session level, the importFrom cache should cover this
 	//
 	// TODO: support go modules
 	// at this time, go/packages appears to be extremely slow
