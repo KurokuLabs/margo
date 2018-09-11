@@ -69,7 +69,15 @@ func (p *Importer) ImportFrom(path, srcDir string, mode types.ImportMode) (*type
 	if abs, err := p.absPath(srcDir); err == nil { // see issue #14282
 		srcDir = abs
 	}
-	bp, err := p.ctxt.Import(path, srcDir, 0)
+
+	ctxt := p.ctxt
+	if path == "syscall/js" {
+		c := *p.ctxt
+		c.BuildTags = append(c.BuildTags, "js", "wasm")
+		ctxt = &c
+	}
+
+	bp, err := ctxt.Import(path, srcDir, 0)
 	if err != nil {
 		return nil, err // err may be *build.NoGoError - return as is
 	}
