@@ -71,7 +71,6 @@ type Gocode struct {
 	Debug bool
 
 	reqs chan gocodeReq
-	gsu  *gcSuggest
 }
 
 func (g *Gocode) ReducerConfig(mx *mg.Ctx) mg.EditorConfig {
@@ -96,17 +95,15 @@ func (g *Gocode) ReducerConfig(mx *mg.Ctx) mg.EditorConfig {
 	return cfg
 }
 
+func (g *Gocode) ReducerInit(mx *mg.Ctx) {
+	mctl.initOnce(mx)
+}
+
 func (g *Gocode) ReducerCond(mx *mg.Ctx) bool {
 	return mx.ActionIs(mg.QueryCompletions{}) && mx.LangIs(mg.Go)
 }
 
 func (g *Gocode) ReducerMount(mx *mg.Ctx) {
-	g.gsu = newGcSuggest(mx, gsuOpts{
-		Source:          g.Source,
-		Debug:           g.Debug,
-		ProposeBuiltins: g.ProposeBuiltins,
-	})
-
 	g.reqs = make(chan gocodeReq)
 	go func() {
 		for gr := range g.reqs {
@@ -121,8 +118,6 @@ func (g *Gocode) ReducerUnmount(mx *mg.Ctx) {
 
 func (g *Gocode) Reduce(mx *mg.Ctx) *mg.State {
 	start := time.Now()
-
-	g.gsu.imp.pruneCacheOnReduce(mx)
 
 	st, gx := initGocodeReducer(mx, *g)
 	if gx == nil {
@@ -355,8 +350,12 @@ func initGocodeReducer(mx *mg.Ctx, g Gocode) (*mg.State, *gocodeCtx) {
 	}
 
 	gx := &gocodeCtx{
-		mx:   mx,
-		gsu:  g.gsu,
+		mx: mx,
+		gsu: newGcSuggest(mx, gsuOpts{
+			Source:          g.Source,
+			Debug:           g.Debug,
+			ProposeBuiltins: g.ProposeBuiltins,
+		}),
 		cn:   cn,
 		fn:   st.View.Filename(),
 		pos:  pos,
