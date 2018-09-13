@@ -34,10 +34,6 @@ type GocodeCalltips struct {
 	status string
 }
 
-func (gc *GocodeCalltips) ReducerInit(mx *mg.Ctx) {
-	mctl.initOnce(mx)
-}
-
 func (gc *GocodeCalltips) ReducerCond(mx *mg.Ctx) bool {
 	return mx.LangIs(mg.Go)
 }

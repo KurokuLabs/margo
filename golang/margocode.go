@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"go/build"
 	"go/types"
+	"log"
 	"margo.sh/mg"
 	"margo.sh/mgpf"
+	"margo.sh/mgutil"
 	"math"
 	"regexp"
 	"runtime/debug"
@@ -17,29 +19,25 @@ import (
 )
 
 var (
-	mctl = &marGocodeCtl{}
+	mctl = &marGocodeCtl{
+		pkgs: &mgcCache{m: map[mgcCacheKey]mgcCacheEnt{}},
+	}
 )
 
-type marGocodeCtl struct {
-	pkgs *mgcCache
-
-	initMu sync.RWMutex
-	inited bool
-	confed bool
-	cmdMap map[string]func(*mg.CmdCtx)
-
-	dbgMu sync.RWMutex
-	dbgF  func(format string, a ...interface{})
-	dbgP  func(*types.Package) bool
+func init() {
+	mg.DefaultReducers.Before(mctl)
 }
 
-func (mgc *marGocodeCtl) subscriber(mx *mg.Ctx) {
-	switch mx.Action.(type) {
-	case mg.ViewModified, mg.ViewSaved:
-		// ViewSaved is probably not required, but saving might result in a `go install`
-		// which results in an updated package.a file
-		mgc.autoPruneCache(mx)
-	}
+type marGocodeCtl struct {
+	mg.ReducerType
+
+	mxQ *mgutil.ChanQ
+
+	mu     sync.RWMutex
+	pkgs   *mgcCache
+	cmdMap map[string]func(*mg.CmdCtx)
+	logs   *log.Logger
+	dbgPrn func(*types.Package) bool
 }
 
 func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
@@ -55,10 +53,11 @@ func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 		}
 	}
 
-	mgc.dbgMu.RLock()
-	defer mgc.dbgMu.RUnlock()
+	mgc.mu.RLock()
+	dpr := mgc.dbgPrn
+	mgc.mu.RUnlock()
 
-	if dpr := mgc.dbgP; dpr != nil {
+	if dpr != nil {
 		mgc.pkgs.forEach(func(e mgcCacheEnt) {
 			if dpr(e.Pkg) {
 				mgc.pkgs.del(e.Key)
@@ -67,35 +66,17 @@ func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 	}
 }
 
-func (mgc *marGocodeCtl) confOnce(mx *mg.Ctx, ctl *MarGocodeCtl) {
-	mgc.initMu.Lock()
-	defer mgc.initMu.Unlock()
-
-	if mgc.confed {
-		return
-	}
-	mgc.confed = true
+func (mgc *marGocodeCtl) conf(mx *mg.Ctx, ctl *MarGocodeCtl) {
+	mgc.mu.Lock()
+	defer mgc.mu.Unlock()
 
 	if ctl.Debug {
-		mgc.dbgMu.Lock()
-		mgc.dbgF = mx.Log.Dbg.Printf
-		mgc.dbgMu.Unlock()
+		mgc.logs = mx.Log.Dbg
 	}
-	mgc.dbgP = ctl.DebugPrune
+	mgc.dbgPrn = ctl.DebugPrune
 }
 
-func (mgc *marGocodeCtl) initOnce(mx *mg.Ctx) {
-	mgc.initMu.Lock()
-	defer mgc.initMu.Unlock()
-
-	if mgc.inited {
-		return
-	}
-	mgc.inited = true
-
-	go mx.Store.Subscribe(mgc.subscriber)
-
-	mgc.pkgs = &mgcCache{m: map[mgcCacheKey]mgcCacheEnt{}}
+func (mgc *marGocodeCtl) ReducerInit(mx *mg.Ctx) {
 	mgc.cmdMap = map[string]func(*mg.CmdCtx){
 		"help": mgc.helpCmd,
 		"cache-list-by-key": func(cx *mg.CmdCtx) {
@@ -110,6 +91,26 @@ func (mgc *marGocodeCtl) initOnce(mx *mg.Ctx) {
 		},
 		"cache-prune": mgc.pruneCacheCmd,
 	}
+
+	mgc.mxQ = mgutil.NewChanQ(10)
+	go func() {
+		for v := range mgc.mxQ.C() {
+			mgc.autoPruneCache(v.(*mg.Ctx))
+		}
+	}()
+}
+
+func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
+	switch mx.Action.(type) {
+	case mg.RunCmd:
+		return mx.AddBuiltinCmds(mgc.cmds()...)
+	case mg.ViewModified, mg.ViewSaved:
+		// ViewSaved is probably not required, but saving might result in a `go install`
+		// which results in an updated package.a file
+		mgc.mxQ.Put(mx)
+	}
+
+	return mx.State
 }
 
 func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string) (gsuPkgInfo, error) {
@@ -136,17 +137,18 @@ func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string
 }
 
 func (mgc *marGocodeCtl) dbgf(format string, a ...interface{}) {
-	mgc.dbgMu.Lock()
-	defer mgc.dbgMu.Unlock()
+	mgc.mu.Lock()
+	logs := mgc.logs
+	mgc.mu.Unlock()
 
-	if mgc.dbgF == nil {
+	if logs == nil {
 		return
 	}
 
 	if !strings.HasSuffix(format, "\n") {
 		format += "\n"
 	}
-	mgc.dbgF("margocode: "+format, a...)
+	logs.Printf("margocode: "+format, a...)
 }
 
 func (mgc *marGocodeCtl) cmds() mg.BuiltinCmdList {
@@ -249,16 +251,10 @@ type MarGocodeCtl struct {
 	DebugPrune func(pkg *types.Package) bool
 }
 
-func (mgc *MarGocodeCtl) ReducerMount(mx *mg.Ctx) {
-	mctl.initOnce(mx)
-	mctl.confOnce(mx, mgc)
+func (mgc *MarGocodeCtl) ReducerInit(mx *mg.Ctx) {
+	mctl.conf(mx, mgc)
 }
 
 func (mgc *MarGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
-	switch mx.Action.(type) {
-	case mg.RunCmd:
-		return mx.AddBuiltinCmds(mctl.cmds()...)
-	default:
-		return mx.State
-	}
+	return mx.State
 }
