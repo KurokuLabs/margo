@@ -95,10 +95,6 @@ func (g *Gocode) ReducerConfig(mx *mg.Ctx) mg.EditorConfig {
 	return cfg
 }
 
-func (g *Gocode) ReducerInit(mx *mg.Ctx) {
-	mctl.initOnce(mx)
-}
-
 func (g *Gocode) ReducerCond(mx *mg.Ctx) bool {
 	return mx.ActionIs(mg.QueryCompletions{}) && mx.LangIs(mg.Go)
 }
