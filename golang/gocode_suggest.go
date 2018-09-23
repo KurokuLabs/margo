@@ -3,13 +3,8 @@ package golang
 import (
 	"github.com/mdempsky/gocode/suggest"
 	"go/build"
-	"go/importer"
-	"go/token"
 	"go/types"
-	"golang.org/x/tools/go/gcexportdata"
-	"margo.sh/golang/internal/srcimporter"
 	"margo.sh/mg"
-	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -19,7 +14,6 @@ import (
 type gsuOpts struct {
 	ProposeBuiltins bool
 	Debug           bool
-	Source          bool
 }
 
 type gsuImpRes struct {
@@ -37,31 +31,6 @@ func newGcSuggest(mx *mg.Ctx, o gsuOpts) *gcSuggest {
 	gsu := &gcSuggest{gsuOpts: o}
 	gsu.imp = gsu.newGsuImporter(mx)
 	return gsu
-}
-
-func (gsu *gcSuggest) newUnderlyingSrcImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
-	return srcimporter.New(
-		overlay,
-
-		BuildContext(mx),
-		token.NewFileSet(),
-		map[string]*types.Package{},
-	)
-}
-
-func (gsu *gcSuggest) newUnderlyingBinImporter(mx *mg.Ctx) types.ImporterFrom {
-	if runtime.Compiler == "gc" {
-		return gcexportdata.NewImporter(token.NewFileSet(), map[string]*types.Package{})
-	}
-	return importer.Default().(types.ImporterFrom)
-}
-
-func (gsu *gcSuggest) newUnderlyingImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
-	// TODO: switch to source importer only
-	if gsu.Source {
-		return gsu.newUnderlyingSrcImporter(mx, overlay)
-	}
-	return gsu.newUnderlyingBinImporter(mx)
 }
 
 func (gsu *gcSuggest) newGsuImporter(mx *mg.Ctx) *gsuImporter {
@@ -138,14 +107,15 @@ func (gi *gsuImporter) Import(path string) (*types.Package, error) {
 	return gi.ImportFrom(path, ".", 0)
 }
 
-func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode) (impPkg *types.Package, err error) {
+func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode) (*types.Package, error) {
+
 	// TODO: add mode to the key somehow?
 	// mode is reserved, but currently not used so it's not a problem
 	// but if it's used in the future, the importer result could depend on it
 	//
 	// adding it to the key might complicate the pkginfo api because it's called
 	// by code that doesn't know anything about mode
-	pkgInf, err := gi.pkgInfo(impPath, srcDir)
+	pkgInf, err := mctl.pkgInfo(gi.mx, mctl.srcMode(), impPath, srcDir)
 	if err != nil {
 		mctl.dbgf("pkgInfo(%q, %q): %s\n", impPath, srcDir, err)
 		return nil, err
@@ -158,18 +128,6 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 		return res.pkg, res.err
 	}
 
-	pkg, err := gi.importFrom(pkgInf, mode)
-	res := gsuImpRes{pkg: pkg, err: err}
-	gi.res[pkgInf.Key] = res
-
-	return pkg, err
-}
-
-func (gi *gsuImporter) importFrom(pkgInf gsuPkgInfo, mode types.ImportMode) (impPkg *types.Package, err error) {
-	mx, gsu := gi.mx, gi.gsu
-
-	defer mx.Profile.Push("gsuImport: " + pkgInf.Path).Pop()
-
 	// I think we need to use a new underlying importer every time
 	// because they cache imports which might depend on srcDir
 	//
@@ -180,7 +138,73 @@ func (gi *gsuImporter) importFrom(pkgInf gsuPkgInfo, mode types.ImportMode) (imp
 	// so we should still get some caching
 	//
 	// binary imports should hopefully still be fast enough
-	underlying := gsu.newUnderlyingImporter(mx, gi)
+	pkg, err := gi.importFrom(mctl.defaultImporter(gi.mx, gi), pkgInf, mode)
+	if err != nil || !pkg.Complete() {
+		pkg, err = gi.importFromFallback(pkgInf, mode, pkg, err)
+	}
+	switch {
+	case err != nil:
+		mctl.dbgf("importFrom(%q, %q): %s\n", pkgInf.Path, pkgInf.Dir, err)
+	case !pkg.Complete():
+		mctl.dbgf("importFrom(%q, %q): pkg is incomplete\n", pkgInf.Path, pkgInf.Dir)
+	}
+
+	gi.res[pkgInf.Key] = gsuImpRes{pkg: pkg, err: err}
+	return pkg, err
+}
+
+func (gi *gsuImporter) importFromFallback(pkgInf gsuPkgInfo, mode types.ImportMode, pkg *types.Package, err error) (*types.Package, error) {
+	complete := false
+	if pkg != nil {
+		complete = pkg.Complete()
+	}
+	mctl.dbgf("importFrom(%q, %q): fallback: complete=%v, err=%s\n", pkgInf.Path, pkgInf.Dir, complete, err)
+
+	// problem1:
+	// if the pkg import fails we will offer no completion
+	//
+	// problem 2:
+	// if it succeeds, but is incomplete we offer completion with `invalid-type` failures
+	// i.e. completion stops working at random points for no obvious reason
+	//
+	// assumption:
+	//   it's better to risk using stale data (bin imports)
+	//   as opposed to offering no completion at all
+	//
+	// risks:
+	// we will end up caching the result, but that shouldn't be a big deal
+	// because if the pkg is edited, thus (possibly) making it importable,
+	// we will remove it from the cache anyway.
+	// there is the issue about mixing binary (potentially incomplete) pkgs with src pkgs
+	// but we were already not going to return anything, so it *shouldn't* apply here
+
+	underlying := mctl.fallbackImporter(gi.mx, gi)
+	if underlying == nil {
+		return pkg, err
+	}
+
+	// import failed, try again
+	if err != nil {
+		mctl.dbgf("importFrom(%q, %q) failed, trying %T importer\n", pkgInf.Path, pkgInf.Dir, underlying)
+		return gi.importFrom(underlying, pkgInf, mode)
+	}
+
+	// pkg was imported without error, but it's incomplete
+	// it's probably a pkg with `import C`
+	mctl.dbgf("importFrom(%q, %q): pkg is incomplete, trying %T importer\n", pkgInf.Path, pkgInf.Dir, underlying)
+	p, e := gi.importFrom(underlying, pkgInf, mode)
+	if e == nil && p.Complete() {
+		return p, e
+	}
+
+	return pkg, err
+}
+
+func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, pkgInf gsuPkgInfo, mode types.ImportMode) (*types.Package, error) {
+	mx := gi.mx
+
+	defer mx.Profile.Push("gsuImport: " + pkgInf.Path).Pop()
+
 	if pkgInf.Std && pkgInf.Path == "unsafe" {
 		return types.Unsafe, nil
 	}
@@ -204,36 +228,4 @@ func (gi *gsuImporter) importFrom(pkgInf gsuPkgInfo, mode types.ImportMode) (imp
 	}
 
 	return typPkg, err
-}
-
-func (gi *gsuImporter) pkgInfo(impPath, srcDir string) (gsuPkgInfo, error) {
-	// TODO: support cache these ops?
-	// at least on the session level, the importFrom cache should cover this
-	//
-	// TODO: support go modules
-	// at this time, go/packages appears to be extremely slow
-	// it takes 100ms+ just to load the errors packages in LoadFiles mode
-
-	bpkg, err := gi.bld.Import(impPath, srcDir, build.FindOnly)
-	if err != nil {
-		return gsuPkgInfo{}, err
-	}
-	return gsuPkgInfo{
-		Path: bpkg.ImportPath,
-		Dir:  bpkg.Dir,
-		Key:  mkMgcCacheKey(gi.gsu.Source, bpkg.Dir),
-		Std:  bpkg.Goroot,
-	}, nil
-}
-
-func (gi *gsuImporter) pruneCacheOnReduce(mx *mg.Ctx) {
-	switch mx.Action.(type) {
-	case mg.ViewModified, mg.ViewSaved:
-		// ViewSaved is probably not required, but saving might result in a `go install`
-		// which results in an updated package.a file
-
-		if pkgInf, err := gi.pkgInfo(".", mx.View.Dir()); err == nil {
-			mctl.pkgs.del(pkgInf.Key)
-		}
-	}
 }
