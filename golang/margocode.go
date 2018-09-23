@@ -4,18 +4,37 @@ import (
 	"bytes"
 	"fmt"
 	"go/build"
+	"go/importer"
+	"go/token"
 	"go/types"
+	"golang.org/x/tools/go/gcexportdata"
 	"log"
+	"margo.sh/golang/internal/srcimporter"
 	"margo.sh/mg"
 	"margo.sh/mgpf"
 	"margo.sh/mgutil"
 	"math"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
+)
+
+// ImporterMode specifies the mode in which the corresponding importer should operate
+type ImporterMode int
+
+const (
+	// SrcImporterWithFallback tells the importer use source code, then fall-back to a binary package
+	SrcImporterWithFallback ImporterMode = iota
+
+	// SrcImporterOnly tells the importer use source only, with no fall-back
+	SrcImporterOnly
+
+	// BinImporterOnly tells the importer use binary packages only, with no fall-back
+	BinImporterOnly
 )
 
 var (
@@ -38,6 +57,48 @@ type marGocodeCtl struct {
 	cmdMap map[string]func(*mg.CmdCtx)
 	logs   *log.Logger
 	dbgPrn func(*types.Package) bool
+	mode   ImporterMode
+}
+
+// defaultImporter returns a new instance of the default importer as specified by marGocodeCtl.mode
+// overlay is the importer to use for imported packages
+func (mgc *marGocodeCtl) defaultImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
+	if mgc.srcMode() {
+		return mgc.newSrcImporter(mx, overlay)
+	}
+	return mgc.newBinImporter(mx, overlay)
+}
+
+// fallbackImporter returns a new instance of the fallback importer as specified by marGocodeCtl.mode
+// if the mode is SrcImporterWithFallback a new binary importer is returned, otherwise nil is returned
+// overlay is the importer to use for imported packages
+func (mgc *marGocodeCtl) fallbackImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
+	mgc.mu.RLock()
+	defer mgc.mu.RUnlock()
+
+	if mgc.mode == SrcImporterWithFallback {
+		return mgc.newBinImporter(mx, overlay)
+	}
+	return nil
+}
+
+// newSrcImporter returns a new instance a source code importer
+func (mgc *marGocodeCtl) newSrcImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
+	return srcimporter.New(
+		overlay,
+
+		BuildContext(mx),
+		token.NewFileSet(),
+		map[string]*types.Package{},
+	)
+}
+
+// newBinImporter returns a new instance of a binary package importer for packages compiled by runtime.Compiler
+func (mgc *marGocodeCtl) newBinImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
+	if runtime.Compiler == "gc" {
+		return gcexportdata.NewImporter(token.NewFileSet(), map[string]*types.Package{})
+	}
+	return importer.Default().(types.ImporterFrom)
 }
 
 func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
@@ -74,6 +135,7 @@ func (mgc *marGocodeCtl) conf(mx *mg.Ctx, ctl *MarGocodeCtl) {
 		mgc.logs = mx.Log.Dbg
 	}
 	mgc.dbgPrn = ctl.DebugPrune
+	mgc.mode = ctl.ImporterMode
 }
 
 func (mgc *marGocodeCtl) ReducerInit(mx *mg.Ctx) {
@@ -111,6 +173,21 @@ func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
 	}
 
 	return mx.State
+}
+
+// srcMode returns true if the importMode is not SrcImporterOnly or SrcImporterWithFallback
+func (mgc *marGocodeCtl) srcMode() bool {
+	mgc.mu.RLock()
+	defer mgc.mu.RUnlock()
+
+	switch mgc.mode {
+	case SrcImporterOnly, SrcImporterWithFallback:
+		return true
+	case BinImporterOnly:
+		return false
+	default:
+		panic("unreachable")
+	}
 }
 
 func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string) (gsuPkgInfo, error) {
@@ -249,6 +326,10 @@ type MarGocodeCtl struct {
 
 	// DebugPrune returns true if pkg should be removed from the cache
 	DebugPrune func(pkg *types.Package) bool
+
+	// The mode in which the types.Importer shouler operate
+	// By default it is SrcImporterWithFallback
+	ImporterMode ImporterMode
 }
 
 func (mgc *MarGocodeCtl) ReducerInit(mx *mg.Ctx) {
