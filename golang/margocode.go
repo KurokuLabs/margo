@@ -2,6 +2,7 @@ package golang
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/build"
 	"go/importer"
@@ -23,9 +24,6 @@ import (
 	"text/tabwriter"
 )
 
-// ImporterMode specifies the mode in which the corresponding importer should operate
-type ImporterMode int
-
 const (
 	// SrcImporterWithFallback tells the importer use source code, then fall-back to a binary package
 	SrcImporterWithFallback ImporterMode = iota
@@ -38,14 +36,18 @@ const (
 )
 
 var (
-	mctl = &marGocodeCtl{
-		pkgs: &mgcCache{m: map[mgcCacheKey]mgcCacheEnt{}},
-	}
+	mctl *marGocodeCtl
 )
 
 func init() {
+	mctl = newMarGocodeCtl()
 	mg.DefaultReducers.Before(mctl)
 }
+
+type importerFactory func(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom
+
+// ImporterMode specifies the mode in which the corresponding importer should operate
+type ImporterMode int
 
 type marGocodeCtl struct {
 	mg.ReducerType
@@ -60,26 +62,22 @@ type marGocodeCtl struct {
 	mode   ImporterMode
 }
 
-// defaultImporter returns a new instance of the default importer as specified by marGocodeCtl.mode
-// overlay is the importer to use for imported packages
-func (mgc *marGocodeCtl) defaultImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
-	if mgc.srcMode() {
-		return mgc.newSrcImporter(mx, overlay)
-	}
-	return mgc.newBinImporter(mx, overlay)
-}
-
-// fallbackImporter returns a new instance of the fallback importer as specified by marGocodeCtl.mode
-// if the mode is SrcImporterWithFallback a new binary importer is returned, otherwise nil is returned
-// overlay is the importer to use for imported packages
-func (mgc *marGocodeCtl) fallbackImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
+func (mgc *marGocodeCtl) importerFactories() (newDefaultImporter, newFallbackImporter importerFactory, srcMode bool) {
 	mgc.mu.RLock()
 	defer mgc.mu.RUnlock()
 
-	if mgc.mode == SrcImporterWithFallback {
-		return mgc.newBinImporter(mx, overlay)
+	s := mgc.newSrcImporter
+	b := mgc.newBinImporter
+	switch mgc.mode {
+	case SrcImporterWithFallback:
+		return s, b, true
+	case SrcImporterOnly:
+		return s, nil, true
+	case BinImporterOnly:
+		return b, nil, false
+	default:
+		panic("unreachable")
 	}
-	return nil
 }
 
 // newSrcImporter returns a new instance a source code importer
@@ -108,9 +106,10 @@ func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 	// if something like pkginfo or DebugPrune is slow,
 	// we will end up blocking the next reduction
 
-	for _, source := range []bool{true, false} {
-		if pkgInf, err := mgc.pkgInfo(mx, source, ".", mx.View.Dir()); err == nil {
-			mgc.pkgs.del(pkgInf.Key)
+	pkgInf, err := mgc.pkgInfo(mx, ".", mx.View.Dir())
+	if err == nil {
+		for _, source := range []bool{true, false} {
+			mgc.pkgs.del(pkgInf.cacheKey(source))
 		}
 	}
 
@@ -138,28 +137,21 @@ func (mgc *marGocodeCtl) conf(mx *mg.Ctx, ctl *MarGocodeCtl) {
 	mgc.mode = ctl.ImporterMode
 }
 
-func (mgc *marGocodeCtl) ReducerInit(mx *mg.Ctx) {
+func newMarGocodeCtl() *marGocodeCtl {
+	mgc := &marGocodeCtl{}
+	mgc.pkgs = &mgcCache{m: map[mgcCacheKey]mgcCacheEnt{}}
 	mgc.cmdMap = map[string]func(*mg.CmdCtx){
-		"help": mgc.helpCmd,
-		"cache-list-by-key": func(cx *mg.CmdCtx) {
-			mgc.listCacheCmd(cx, func(ents []mgcCacheEnt, i, j int) bool {
-				return ents[i].Key < ents[j].Key
-			})
-		},
-		"cache-list-by-dur": func(cx *mg.CmdCtx) {
-			mgc.listCacheCmd(cx, func(ents []mgcCacheEnt, i, j int) bool {
-				return ents[i].Dur < ents[j].Dur
-			})
-		},
-		"cache-prune": mgc.pruneCacheCmd,
+		"help":        mgc.helpCmd,
+		"cache-list":  mgc.cacheListCmd,
+		"cache-prune": mgc.cachePruneCmd,
 	}
-
 	mgc.mxQ = mgutil.NewChanQ(10)
 	go func() {
 		for v := range mgc.mxQ.C() {
 			mgc.autoPruneCache(v.(*mg.Ctx))
 		}
 	}()
+	return mgc
 }
 
 func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
@@ -190,7 +182,7 @@ func (mgc *marGocodeCtl) srcMode() bool {
 	}
 }
 
-func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string) (gsuPkgInfo, error) {
+func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, impPath, srcDir string) (gsuPkgInfo, error) {
 	// TODO: cache these ops?
 	// it might not be worth the added complexity since we will get a lot of impPath=io
 	// with a different srcPath which means we have to look it up anyway.
@@ -208,7 +200,6 @@ func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, source bool, impPath, srcDir string
 	return gsuPkgInfo{
 		Path: bpkg.ImportPath,
 		Dir:  bpkg.Dir,
-		Key:  mkMgcCacheKey(source, bpkg.Dir),
 		Std:  bpkg.Goroot,
 	}, nil
 }
@@ -238,10 +229,48 @@ func (mgc *marGocodeCtl) cmds() mg.BuiltinCmdList {
 	}
 }
 
-func (mgc *marGocodeCtl) listCacheCmd(cx *mg.CmdCtx, less func(ents []mgcCacheEnt, i, j int) bool) {
+func (mgc *marGocodeCtl) cacheListCmd(cx *mg.CmdCtx) {
 	defer cx.Output.Close()
 
-	ents := mctl.pkgs.entries()
+	ents := mgc.pkgs.entries()
+	lessFuncs := map[string]func(i, j int) bool{
+		"path": func(i, j int) bool {
+			return ents[i].Key.Path < ents[j].Key.Path
+		},
+		"dur": func(i, j int) bool {
+			return ents[i].Dur < ents[j].Dur
+		},
+	}
+	orderNames := func() string {
+		l := make([]string, 0, len(lessFuncs))
+		for k, _ := range lessFuncs {
+			l = append(l, k)
+		}
+		sort.Strings(l)
+		return strings.Join(l, "|")
+	}()
+
+	by := "path"
+	desc := false
+	flags := flag.NewFlagSet(cx.Name, flag.ContinueOnError)
+	flags.SetOutput(cx.Output)
+	flags.BoolVar(&desc, "desc", desc, "Order results in descending order")
+	flags.StringVar(&by, "by", by, "Field to order by: "+orderNames)
+	err := flags.Parse(cx.Args)
+	if err != nil {
+		return
+	}
+	less, ok := lessFuncs[by]
+	if !ok {
+		fmt.Fprintf(cx.Output, "Unknown order=%s. Expected one of: %s\n", by, orderNames)
+		flags.Usage()
+		return
+	}
+	if desc {
+		lf := less
+		less = func(i, j int) bool { return lf(j, i) }
+	}
+
 	if len(ents) == 0 {
 		fmt.Fprintln(cx.Output, "The cache is empty")
 		return
@@ -252,19 +281,23 @@ func (mgc *marGocodeCtl) listCacheCmd(cx *mg.CmdCtx, less func(ents []mgcCacheEn
 	defer tbw.Flush()
 
 	digits := int(math.Floor(math.Log10(float64(len(ents)))) + 1)
-	sfxFormat := "\t%s\t%s\n"
+	sfxFormat := "\t%s\t%s\t%s\n"
 	hdrFormat := "%s" + sfxFormat
 	rowFormat := fmt.Sprintf("%%%dd/%d", digits, len(ents)) + sfxFormat
 
-	sort.Slice(ents, func(i, j int) bool { return less(ents, i, j) })
-	fmt.Fprintf(buf, hdrFormat, "Count:", "Package Key:", "Import Duration:")
+	sort.Slice(ents, less)
+	fmt.Fprintf(buf, hdrFormat, "Count:", "Path:", "Duration:", "Mode:")
 	for i, e := range ents {
-		fmt.Fprintf(buf, rowFormat, i+1, e.Key, mgpf.D(e.Dur))
+		mode := "bin"
+		if e.Key.Source {
+			mode = "src"
+		}
+		fmt.Fprintf(buf, rowFormat, i+1, e.Key.Path, mgpf.D(e.Dur), mode)
 	}
 	tbw.Write(buf.Bytes())
 }
 
-func (mgc *marGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
+func (mgc *marGocodeCtl) cachePruneCmd(cx *mg.CmdCtx) {
 	defer cx.Output.Close()
 
 	args := cx.Args
@@ -282,7 +315,7 @@ func (mgc *marGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
 		}
 	}
 
-	ents := mctl.pkgs.prune(pats...)
+	ents := mgc.pkgs.prune(pats...)
 	for _, e := range ents {
 		fmt.Fprintln(cx.Output, "Pruned:", e.Key)
 	}
@@ -293,10 +326,9 @@ func (mgc *marGocodeCtl) pruneCacheCmd(cx *mg.CmdCtx) {
 func (mgc *marGocodeCtl) helpCmd(cx *mg.CmdCtx) {
 	defer cx.Output.Close()
 
-	cx.Output.Write([]byte(`Usage: margocodectl $subcmd [args...]
+	cx.Output.Write([]byte(`Usage: ` + cx.Name + ` $subcmd [args...]
 	cache-prune [regexp, or path...] - remove packages matching glob from the cache. default: '.*'
-	cache-list-by-key                - list cached packages, sorted by key
-	cache-list-by-dur                - list cached packages, sorted by import duration
+	cache-list                       - list cached packages, see '` + cx.Name + ` cache-list --help' for more details
 `))
 }
 
