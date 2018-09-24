@@ -89,11 +89,12 @@ type gsuPkgInfo struct {
 	// the abs path to the package directory
 	Dir string
 
-	// the key used for caching
-	Key mgcCacheKey
-
 	// whether or not this is a stdlib package
 	Std bool
+}
+
+func (p gsuPkgInfo) cacheKey(source bool) mgcCacheKey {
+	return mgcCacheKey{gsuPkgInfo: p, Source: source}
 }
 
 type gsuImporter struct {
@@ -107,58 +108,44 @@ func (gi *gsuImporter) Import(path string) (*types.Package, error) {
 	return gi.ImportFrom(path, ".", 0)
 }
 
-func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode) (*types.Package, error) {
-
+func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode) (pkg *types.Package, err error) {
 	// TODO: add mode to the key somehow?
 	// mode is reserved, but currently not used so it's not a problem
 	// but if it's used in the future, the importer result could depend on it
 	//
 	// adding it to the key might complicate the pkginfo api because it's called
 	// by code that doesn't know anything about mode
-	pkgInf, err := mctl.pkgInfo(gi.mx, mctl.srcMode(), impPath, srcDir)
+	pkgInf, err := mctl.pkgInfo(gi.mx, impPath, srcDir)
 	if err != nil {
 		mctl.dbgf("pkgInfo(%q, %q): %s\n", impPath, srcDir, err)
 		return nil, err
 	}
+	newDefImpr, newFbkImpr, srcMode := mctl.importerFactories()
+	k := pkgInf.cacheKey(srcMode)
 
 	// we cache the results of the underlying importer for this *session*
 	// because if it fails, we could potentialy end up in a loop
 	// trying to import the package again.
-	if res, ok := gi.res[pkgInf.Key]; ok {
+	if res, ok := gi.res[k]; ok {
 		return res.pkg, res.err
 	}
+	defer func() { gi.res[k] = gsuImpRes{pkg: pkg, err: err} }()
 
-	// I think we need to use a new underlying importer every time
-	// because they cache imports which might depend on srcDir
-	//
-	// they also have a fileset which could possibly grow indefinitely.
-	// I assume using different filesets is ok since we don't make use of it directly
-	//
-	// at least for the srcImporter, we pass in our own importer as the overlay
-	// so we should still get some caching
-	//
-	// binary imports should hopefully still be fast enough
-	pkg, err := gi.importFrom(mctl.defaultImporter(gi.mx, gi), pkgInf, mode)
-	if err != nil || !pkg.Complete() {
-		pkg, err = gi.importFromFallback(pkgInf, mode, pkg, err)
-	}
-	switch {
-	case err != nil:
-		mctl.dbgf("importFrom(%q, %q): %s\n", pkgInf.Path, pkgInf.Dir, err)
-	case !pkg.Complete():
-		mctl.dbgf("importFrom(%q, %q): pkg is incomplete\n", pkgInf.Path, pkgInf.Dir)
+	defImpr := newDefImpr(gi.mx, gi)
+	pkg, err = gi.importFrom(defImpr, k, mode)
+	complete := err == nil && pkg.Complete()
+	if complete {
+		return pkg, nil
 	}
 
-	gi.res[pkgInf.Key] = gsuImpRes{pkg: pkg, err: err}
-	return pkg, err
-}
+	mctl.dbgf("importFrom(%q, %q): default=%T: complete=%v, err=%v\n",
+		k.Path, k.Dir, defImpr, complete, err,
+	)
 
-func (gi *gsuImporter) importFromFallback(pkgInf gsuPkgInfo, mode types.ImportMode, pkg *types.Package, err error) (*types.Package, error) {
-	complete := false
-	if pkg != nil {
-		complete = pkg.Complete()
+	// no fallback allowed
+	if newFbkImpr == nil {
+		return pkg, err
 	}
-	mctl.dbgf("importFrom(%q, %q): fallback: complete=%v, err=%s\n", pkgInf.Path, pkgInf.Dir, complete, err)
 
 	// problem1:
 	// if the pkg import fails we will offer no completion
@@ -178,54 +165,43 @@ func (gi *gsuImporter) importFromFallback(pkgInf gsuPkgInfo, mode types.ImportMo
 	// there is the issue about mixing binary (potentially incomplete) pkgs with src pkgs
 	// but we were already not going to return anything, so it *shouldn't* apply here
 
-	underlying := mctl.fallbackImporter(gi.mx, gi)
-	if underlying == nil {
-		return pkg, err
+	fbkImpr := newFbkImpr(gi.mx, gi)
+	fbkPkg, fbkErr := gi.importFrom(fbkImpr, k.fallback(), mode)
+	fbkComplete := fbkErr == nil && fbkPkg.Complete()
+	switch {
+	case fbkComplete:
+		pkg, err = fbkPkg, nil
+	case fbkPkg != nil && pkg == nil:
+		pkg, err = fbkPkg, fbkErr
 	}
 
-	// import failed, try again
-	if err != nil {
-		mctl.dbgf("importFrom(%q, %q) failed, trying %T importer\n", pkgInf.Path, pkgInf.Dir, underlying)
-		return gi.importFrom(underlying, pkgInf, mode)
-	}
-
-	// pkg was imported without error, but it's incomplete
-	// it's probably a pkg with `import C`
-	mctl.dbgf("importFrom(%q, %q): pkg is incomplete, trying %T importer\n", pkgInf.Path, pkgInf.Dir, underlying)
-	p, e := gi.importFrom(underlying, pkgInf, mode)
-	if e == nil && p.Complete() {
-		return p, e
-	}
+	mctl.dbgf("importFrom(%q, %q): fallback=%T: complete=%v, err=%v\n",
+		k.Path, k.Dir, fbkImpr, fbkComplete, fbkErr,
+	)
 
 	return pkg, err
 }
 
-func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, pkgInf gsuPkgInfo, mode types.ImportMode) (*types.Package, error) {
-	mx := gi.mx
+func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, k mgcCacheKey, mode types.ImportMode) (*types.Package, error) {
+	defer gi.mx.Profile.Push("gsuImport: " + k.Path).Pop()
 
-	defer mx.Profile.Push("gsuImport: " + pkgInf.Path).Pop()
-
-	if pkgInf.Std && pkgInf.Path == "unsafe" {
+	if k.Std && k.Path == "unsafe" {
 		return types.Unsafe, nil
 	}
 
-	if res, ok := gi.res[pkgInf.Key]; ok {
-		return res.pkg, res.err
-	}
-
-	if e, ok := mctl.pkgs.get(pkgInf.Key); ok {
+	if e, ok := mctl.pkgs.get(k); ok {
 		return e.Pkg, nil
 	}
 
 	impStart := time.Now()
-	typPkg, err := underlying.ImportFrom(pkgInf.Path, pkgInf.Dir, mode)
+	pkg, err := underlying.ImportFrom(k.Path, k.Dir, mode)
 	impDur := time.Since(impStart)
 
 	if err == nil {
-		mctl.pkgs.put(mgcCacheEnt{Key: pkgInf.Key, Pkg: typPkg, Dur: impDur})
+		mctl.pkgs.put(mgcCacheEnt{Key: k, Pkg: pkg, Dur: impDur})
 	} else {
-		mctl.dbgf("%T.ImportFrom(%q, %q): %s\n", underlying, pkgInf.Path, pkgInf.Dir, err)
+		mctl.dbgf("%T.ImportFrom(%q, %q): %s\n", underlying, k.Path, k.Dir, err)
 	}
 
-	return typPkg, err
+	return pkg, err
 }
