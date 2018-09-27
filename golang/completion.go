@@ -112,13 +112,17 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 		return cx
 	}
 
-	switch cx.CursorNode.Node.(type) {
+	switch x := cx.CursorNode.Node.(type) {
 	case nil:
 		cx.Scope |= PackageScope
 	case *ast.File:
 		cx.Scope |= FileScope
 	case *ast.BlockStmt:
 		cx.Scope |= BlockScope
+	case *ast.CaseClause:
+		if NodeEnclosesPos(PosEnd{x.Colon, x.End()}, cn.Pos) {
+			cx.Scope |= BlockScope
+		}
 	}
 
 	if gd := cn.GenDecl; gd != nil {

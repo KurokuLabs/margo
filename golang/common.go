@@ -68,6 +68,19 @@ func NodeEnclosesPos(node ast.Node, pos token.Pos) bool {
 	return pos < ne || !ne.IsValid()
 }
 
+type PosEnd struct {
+	P token.Pos
+	E token.Pos
+}
+
+func (pe PosEnd) Pos() token.Pos {
+	return pe.P
+}
+
+func (pe PosEnd) End() token.Pos {
+	return pe.E
+}
+
 type CursorNode struct {
 	Pos       token.Pos
 	AstFile   *ast.File
