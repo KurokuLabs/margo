@@ -294,7 +294,7 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 				Query: `func method ` + typ,
 				Title: `(` + typ + `) method() {...}`,
 				Src: `
-					func (${1:` + nm + `} ${2:*` + typ + `}) ${3:name}($4)$5 {
+					func (${1:` + nm + `} ${2:*}${3:` + typ + `}) ${4:name}($5)$6 {
 						$0
 					}
 				`,
