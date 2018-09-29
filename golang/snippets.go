@@ -269,8 +269,8 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 		case *ast.GenDecl:
 			for _, spec := range x.Specs {
 				spec, ok := spec.(*ast.TypeSpec)
-				if ok && spec.Name != nil {
-					types = append(types, spec.Name.String())
+				if ok && spec.Name != nil && spec.Name.Name != "_" {
+					types = append(types, spec.Name.Name)
 				}
 			}
 		}
