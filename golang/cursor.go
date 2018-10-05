@@ -154,3 +154,31 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 
 	return cx
 }
+
+func (cx *CursorCtx) funcName() (name string, isMethod bool) {
+	var fd *ast.FuncDecl
+	cn := cx.CursorNode
+	if !cn.Set(&fd) {
+		return "", false
+	}
+	if fd.Name == nil || !NodeEnclosesPos(fd.Name, cx.CursorNode.Pos) {
+		return "", false
+	}
+	return fd.Name.Name, fd.Recv != nil
+}
+
+// FuncName returns the name of function iff the cursor is on a func declariton's name
+func (cx *CursorCtx) FuncName() string {
+	if nm, isMeth := cx.funcName(); !isMeth {
+		return nm
+	}
+	return ""
+}
+
+// FuncName returns the name of function iff the cursor is on a method declariton's name
+func (cx *CursorCtx) MethodName() string {
+	if nm, isMeth := cx.funcName(); isMeth {
+		return nm
+	}
+	return ""
+}
