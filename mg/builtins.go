@@ -8,9 +8,11 @@ import (
 )
 
 var (
+	// Builtins is the set of pre-defined builtin commands
 	Builtins = &builtins{}
 )
 
+// BuiltinCmdList is a list of BuiltinCmds
 type BuiltinCmdList []BuiltinCmd
 
 // Lookup looks up the builtin command `name` in the list.
@@ -48,12 +50,12 @@ func (bcl BuiltinCmdList) Filter(filter func(BuiltinCmd) bool) BuiltinCmdList {
 type builtins struct{ ReducerType }
 
 // ExecCmd implements the `.exec` builtin.
-func (b builtins) ExecCmd(cx *CmdCtx) *State {
-	go b.execCmd(cx)
+func (bc builtins) ExecCmd(cx *CmdCtx) *State {
+	go bc.execCmd(cx)
 	return cx.State
 }
 
-func (b builtins) execCmd(cx *CmdCtx) {
+func (bc builtins) execCmd(cx *CmdCtx) {
 	defer cx.Output.Close()
 
 	if cx.Name == ".exec" {
@@ -72,7 +74,7 @@ func (b builtins) execCmd(cx *CmdCtx) {
 // TypeCmd tries to find the cx.Args in commands, and writes the description of
 // the commands into provided buffer. If the Args is empty, it uses all
 // available commands.
-func (b builtins) TypeCmd(cx *CmdCtx) *State {
+func (bc builtins) TypeCmd(cx *CmdCtx) *State {
 	defer cx.Output.Close()
 
 	cmds := cx.BuiltinCmds
@@ -96,7 +98,7 @@ func (b builtins) TypeCmd(cx *CmdCtx) *State {
 
 // EnvCmd finds all environment variables corresponding to cx.Args into the
 // cx.Output buffer.
-func (b builtins) EnvCmd(cx *CmdCtx) *State {
+func (bc builtins) EnvCmd(cx *CmdCtx) *State {
 	defer cx.Output.Close()
 
 	buf := &bytes.Buffer{}
@@ -117,11 +119,11 @@ func (b builtins) EnvCmd(cx *CmdCtx) *State {
 }
 
 // Commands returns a list of predefined commands.
-func (b builtins) Commands() BuiltinCmdList {
+func (bc builtins) Commands() BuiltinCmdList {
 	return []BuiltinCmd{
-		BuiltinCmd{Name: ".env", Desc: "List env vars", Run: b.EnvCmd},
-		BuiltinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: b.ExecCmd},
-		BuiltinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: b.TypeCmd},
+		BuiltinCmd{Name: ".env", Desc: "List env vars", Run: bc.EnvCmd},
+		BuiltinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: bc.ExecCmd},
+		BuiltinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: bc.TypeCmd},
 	}
 }
 
@@ -133,9 +135,16 @@ func (bc builtins) Reduce(mx *Ctx) *State {
 	return mx.State
 }
 
+// CmdCtx holds details about a command execution
 type CmdCtx struct {
+	// Ctx is the underlying Ctx for the current reduction
 	*Ctx
+
+	// RunCmd is the action that was dispatched
 	RunCmd
+
+	// Output is the `stdout` of the command.
+	// Commands must close it when are done.
 	Output OutputStream
 }
 
@@ -146,11 +155,16 @@ func (cx *CmdCtx) update(updaters ...func(*CmdCtx)) *CmdCtx {
 	return cx
 }
 
+// Copy returns a shallow copy of the CmdCtx
 func (cx *CmdCtx) Copy(updaters ...func(*CmdCtx)) *CmdCtx {
 	x := *cx
 	return x.update(updaters...)
 }
 
+// RunProc convenience function that:
+// * calls StartProc()
+// * waits for the process to complete
+// * and logs any returned error to CmdCtx.Output
 func (cx *CmdCtx) RunProc() {
 	p, err := cx.StartProc()
 	if err == nil {
@@ -173,10 +187,16 @@ func (cx *CmdCtx) StartProc() (*Proc, error) {
 // Where possible, implementations should prefer to do real work in a goroutine.
 type BuiltinCmdRunFunc func(*CmdCtx) *State
 
+// BuiltinCmd describes a builtin command
 type BuiltinCmd struct {
+	// Name is the name of the name.
 	Name string
+
+	// Desc is a description of what the command does
 	Desc string
-	Run  BuiltinCmdRunFunc
+
+	// Run is called to carry out the operation of the command
+	Run BuiltinCmdRunFunc
 }
 
 // ExecRunFunc returns a BuiltinCMd.Run function that wraps Builtins.ExecCmd
