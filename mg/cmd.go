@@ -69,56 +69,44 @@ type OutputStream interface {
 	Flush() error
 }
 
+// OutputStreams delegates to a list of OutputStreams.
+//
+// For each method (Write, Close, Flush):
+//
+// If none of the underlying methods return an error, a nil error is returned.
+//
+// Otherwise an ErrorList length == len(OutputStreams) is returned.
+// For each entry OutputStreams[i], ErrorList[i] contains the error
+// returned for the method called on that OutputStream.
 type OutputStreams []OutputStream
 
+// Write calls Write() on all each OutputStream
 func (sl OutputStreams) Write(p []byte) (int, error) {
-	var el ErrorList
-
-	for i, s := range sl {
+	return len(p), sl.forEach(func(s OutputStream) error {
 		n, err := s.Write(p)
 		if err == nil && n != len(p) {
-			err = io.ErrShortWrite
+			return io.ErrShortWrite
 		}
-		if err == nil {
-			continue
-		}
-		if len(el) == 0 {
-			el = make(ErrorList, len(sl))
-		}
-		el[i] = err
-	}
-
-	if len(el) == 0 {
-		return len(p), nil
-	}
-	return len(p), el
+		return err
+	})
 }
 
+// Close calls Close() on all each OutputStream
 func (sl OutputStreams) Close() error {
-	var el ErrorList
-
-	for i, s := range sl {
-		err := s.Close()
-		if err == nil {
-			continue
-		}
-		if len(el) == 0 {
-			el = make(ErrorList, len(sl))
-		}
-		el[i] = err
-	}
-
-	if len(el) == 0 {
-		return nil
-	}
-	return el
+	return sl.forEach(func(s OutputStream) error { return s.Close() })
 }
 
+// Flush calls Flush() on all each OutputStream
 func (sl OutputStreams) Flush() error {
-	var el ErrorList
+	return sl.forEach(func(s OutputStream) error { return s.Flush() })
+}
 
+// forEach calls f on each entry in the list
+// it takes care of implementing the documented error returned by OutputStreams' methods
+func (sl OutputStreams) forEach(f func(OutputStream) error) error {
+	var el ErrorList
 	for i, s := range sl {
-		err := s.Flush()
+		err := f(s)
 		if err == nil {
 			continue
 		}
@@ -127,7 +115,6 @@ func (sl OutputStreams) Flush() error {
 		}
 		el[i] = err
 	}
-
 	if len(el) == 0 {
 		return nil
 	}
