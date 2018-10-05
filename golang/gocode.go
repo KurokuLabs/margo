@@ -351,7 +351,7 @@ func initGocodeReducer(mx *mg.Ctx, g Gocode) (*mg.Ctx, *gocodeCtx) {
 	st = st.SetView(st.View.Copy(func(v *mg.View) { v.Pos = pos }))
 	mx = mx.SetState(st)
 
-	cx := NewCompletionCtx(mx, src, pos)
+	cx := NewCursorCtx(mx, src, pos)
 	if cx.Scope.Any(PackageScope, FileScope, ImportScope, StringScope, CommentScope) {
 		return mx, nil
 	}
