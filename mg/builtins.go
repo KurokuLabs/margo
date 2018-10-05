@@ -30,6 +30,20 @@ func (bcl BuiltinCmdList) Lookup(name string) (cmd BuiltinCmd, found bool) {
 	panic("internal error: the `.exec` BuiltinCmd is not defined")
 }
 
+// Filter returns a copy of the list consisting only
+// of commands for which filter returns true
+func (bcl BuiltinCmdList) Filter(filter func(BuiltinCmd) bool) BuiltinCmdList {
+	cmds := BuiltinCmdList{}
+	for _, l := range []BuiltinCmdList{bcl, Builtins.Commands()} {
+		for _, c := range l {
+			if filter(c) {
+				cmds = append(cmds, c)
+			}
+		}
+	}
+	return cmds
+}
+
 // BuiltinCmds implements various builtin commands.
 type builtins struct{ ReducerType }
 

@@ -58,8 +58,11 @@ func (el ErrorList) Error() string {
 	return buf.String()
 }
 
-// OutputStream describes an object that's capable of dispatching command output
-// its main implementation is CmdOutputWriter
+// OutputStream describes an object that's capable of dispatching command output.
+//
+// An OutputSream is safe for concurrent use.
+//
+// The main implementation is CmdOut.
 type OutputStream interface {
 	io.Writer
 	io.Closer
@@ -230,10 +233,47 @@ func runCmd(mx *Ctx, rc RunCmd) *State {
 		Output: &CmdOut{Fd: rc.Fd, Dispatch: mx.Store.Dispatch},
 	}
 
-	if cmd, ok := cx.BuiltinCmds.Lookup(cx.Name); ok {
-		return cmd.Run(cx)
+	cmds := cx.BuiltinCmds.Filter(func(c BuiltinCmd) bool { return c.Name == cx.Name })
+	switch len(cmds) {
+	case 0:
+		return Builtins.ExecCmd(cx)
+	case 1:
+		return cmds[0].Run(cx)
 	}
-	return Builtins.ExecCmd(cx)
+
+	stream := cx.Output
+	defer stream.Close()
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
+
+	st := cx.State
+	for _, c := range cmds {
+		cx = cx.Copy(func(x *CmdCtx) {
+			x.Ctx = x.Ctx.SetState(st)
+			x.Output = newOutputStreamRef(wg, stream)
+		})
+		st = c.Run(cx)
+	}
+	return st
+}
+
+type outputStreamRef struct {
+	wg   *sync.WaitGroup
+	once sync.Once
+	OutputStream
+}
+
+func newOutputStreamRef(wg *sync.WaitGroup, w OutputStream) OutputStream {
+	wg.Add(1)
+	return &outputStreamRef{
+		wg:           wg,
+		OutputStream: w,
+	}
+}
+
+func (osr *outputStreamRef) Close() error {
+	osr.once.Do(osr.wg.Done)
+	return nil
 }
 
 type RunCmdData struct {
