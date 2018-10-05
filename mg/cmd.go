@@ -2,6 +2,7 @@ package mg
 
 import (
 	"bytes"
+	"flag"
 	"io"
 	"margo.sh/mgutil"
 	"os"
@@ -268,6 +269,15 @@ type RunCmdData struct {
 	RunCmd
 }
 
+type RunCmdFlagSet struct {
+	RunCmd RunCmd
+	*flag.FlagSet
+}
+
+func (fs RunCmdFlagSet) Parse() error {
+	return fs.FlagSet.Parse(fs.RunCmd.Args)
+}
+
 type RunCmd struct {
 	ActionType
 
@@ -277,6 +287,34 @@ type RunCmd struct {
 	Args     []string
 	CancelID string
 	Prompts  []string
+}
+
+func (rc RunCmd) Flags() RunCmdFlagSet {
+	return RunCmdFlagSet{
+		RunCmd:  rc,
+		FlagSet: flag.NewFlagSet(rc.Name, flag.ContinueOnError),
+	}
+}
+
+func (rc RunCmd) StringFlag(name, value string) string {
+	fs := rc.Flags()
+	v := fs.String(name, value, "")
+	fs.Parse()
+	return *v
+}
+
+func (rc RunCmd) BoolFlag(name string, value bool) bool {
+	fs := rc.Flags()
+	v := fs.Bool(name, value, "")
+	fs.Parse()
+	return *v
+}
+
+func (rc RunCmd) IntFlag(name string, value int) int {
+	fs := rc.Flags()
+	v := fs.Int(name, value, "")
+	fs.Parse()
+	return *v
 }
 
 func (rc RunCmd) Interpolate(mx *Ctx) RunCmd {
