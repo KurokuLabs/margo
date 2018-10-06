@@ -56,6 +56,11 @@ func (bc builtins) ExecCmd(cx *CmdCtx) *State {
 	return cx.State
 }
 
+func (bc builtins) nopRun(cx *CmdCtx) *State {
+	defer cx.Output.Close()
+	return cx.State
+}
+
 func (bc builtins) execCmd(cx *CmdCtx) {
 	defer cx.Output.Close()
 
@@ -125,6 +130,10 @@ func (bc builtins) Commands() BuiltinCmdList {
 		BuiltinCmd{Name: ".env", Desc: "List env vars", Run: bc.EnvCmd},
 		BuiltinCmd{Name: ".exec", Desc: "Run a command through os/exec", Run: bc.ExecCmd},
 		BuiltinCmd{Name: ".type", Desc: "Lists all builtins or which builtin handles a command", Run: bc.TypeCmd},
+
+		// virtual commands implemented by other reducers
+		// these are fallbacks, so no error is reported for the missing command
+		BuiltinCmd{Name: RcActuate, Desc: "Trigger a mouse-like action at the cursor e.g. goto.definition", Run: bc.nopRun},
 	}
 }
 
