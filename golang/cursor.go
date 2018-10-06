@@ -93,6 +93,11 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 	return NewCursorCtx(mx, src, pos)
 }
 
+func NewViewCursorCtx(mx *mg.Ctx) *CursorCtx {
+	src, pos := mx.View.SrcPos()
+	return NewCursorCtx(mx, src, pos)
+}
+
 func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 	cn := ParseCursorNode(mx.Store, src, pos)
 	af := cn.AstFile
