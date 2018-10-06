@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 )
 
 var (
@@ -161,7 +162,44 @@ func (cx *CmdCtx) Copy(updaters ...func(*CmdCtx)) *CmdCtx {
 	return x.update(updaters...)
 }
 
-// RunProc convenience function that:
+// WithCmd returns a copy of cx RunCmd updated with Name name and Args args
+func (cx *CmdCtx) WithCmd(name string, args ...string) *CmdCtx {
+	return cx.Copy(func(cx *CmdCtx) {
+		rc := cx.RunCmd
+		rc.Name = name
+		rc.Args = args
+		cx.RunCmd = rc
+	})
+}
+
+// Run runs the list of builtin commands with name CmtCtx.RunCmd.Name.
+// If no commands exist with that name, it calls Builtins.ExecCmd instead.
+func (cx *CmdCtx) Run() *State {
+	cmds := cx.BuiltinCmds.Filter(func(c BuiltinCmd) bool { return c.Name == cx.Name })
+	switch len(cmds) {
+	case 0:
+		return Builtins.ExecCmd(cx)
+	case 1:
+		return cmds[0].Run(cx)
+	}
+
+	stream := cx.Output
+	defer stream.Close()
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
+
+	st := cx.State
+	for _, c := range cmds {
+		cx = cx.Copy(func(x *CmdCtx) {
+			x.Ctx = x.Ctx.SetState(st)
+			x.Output = newOutputStreamRef(wg, stream)
+		})
+		st = c.Run(cx)
+	}
+	return st
+}
+
+// RunProc is a convenience function that:
 // * calls StartProc()
 // * waits for the process to complete
 // * and logs any returned error to CmdCtx.Output
@@ -197,15 +235,4 @@ type BuiltinCmd struct {
 
 	// Run is called to carry out the operation of the command
 	Run BuiltinCmdRunFunc
-}
-
-// ExecRunFunc returns a BuiltinCMd.Run function that wraps Builtins.ExecCmd
-// It sets the received CmdCtx.RunCmd's Name and Args fields
-func ExecRunFunc(name string, args ...string) BuiltinCmdRunFunc {
-	return func(cx *CmdCtx) *State {
-		x := *cx
-		x.RunCmd.Name = name
-		x.RunCmd.Args = args
-		return Builtins.ExecCmd(&x)
-	}
 }

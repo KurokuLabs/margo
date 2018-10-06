@@ -220,29 +220,7 @@ func runCmd(mx *Ctx, rc RunCmd) *State {
 		RunCmd: rc,
 		Output: &CmdOut{Fd: rc.Fd, Dispatch: mx.Store.Dispatch},
 	}
-
-	cmds := cx.BuiltinCmds.Filter(func(c BuiltinCmd) bool { return c.Name == cx.Name })
-	switch len(cmds) {
-	case 0:
-		return Builtins.ExecCmd(cx)
-	case 1:
-		return cmds[0].Run(cx)
-	}
-
-	stream := cx.Output
-	defer stream.Close()
-	wg := &sync.WaitGroup{}
-	defer wg.Wait()
-
-	st := cx.State
-	for _, c := range cmds {
-		cx = cx.Copy(func(x *CmdCtx) {
-			x.Ctx = x.Ctx.SetState(st)
-			x.Output = newOutputStreamRef(wg, stream)
-		})
-		st = c.Run(cx)
-	}
-	return st
+	return cx.Run()
 }
 
 type outputStreamRef struct {
