@@ -66,34 +66,32 @@ func (dr *defaultReducers) After(l ...Reducer) {
 //
 // The methods are called in the order listed below:
 //
-// * ReducerInit
+// * ReInit
 //   this is called during the first action (initAction{} FKA Started{})
 //
-// * ReducerConfig
+// * ReEditorConfig
 //   this is called on each reduction
 //
-// * ReducerCond
+// * ReCond
 //   this is called on each reduction
 //   if it returns false, no other method is called
 //
-// * ReducerMount
-//   this is called once, after the first time ReducerCond returns true
+// * ReMount
+//   this is called once, after the first time ReCond returns true
 //
 // * Reduce
 //   this is called on each reduction until the agent begins shutting down
 //
-// * ReducerUnmount
+// * ReUnmount
 //   this is called once when the agent is shutting down,
-//   iif ReducerMount was called
+//   iif ReMount was called
 //
 // For simplicity and the ability to extend the interface in the future,
 // users should embed `ReducerType` in their types to complete the interface.
 //
 // For convenience, it also implements all optional (non-Reduce()) methods.
 //
-// The prefixes `Reduce` and `Reducer` are reserved, and should not be used.
-// To work-around a frequent typo, the `ReducerXXX` methods will have an alias
-// `ReduceXXX` designed to fail the build if the name is used.
+// The prefixes `Re`, `Reduce` and `Reducer` are reserved, and should not be used.
 //
 // NewReducer() can be used to convert a function to a reducer.
 //
@@ -123,54 +121,40 @@ type Reducer interface {
 	// a package when one of its files when the ViewSaved action is dispatched.
 	Reduce(*Ctx) *State
 
-	// ReducerLabel returns a string that can be used to name the reducer
+	// ReLabel returns a string that can be used to name the reducer
 	// in pf.Profile and other display scenarios
-	ReducerLabel() string
+	ReLabel() string
 
-	// ReducerInit is called for the first reduction
+	// ReInit is called for the first reduction
 	// * it's only called once and can be used to initialise reducer state
 	//   e.g. for initialising an embedded type
-	// * it's called before ReducerConfig()
-	ReducerInit(*Ctx)
+	// * it's called before ReEditorConfig()
+	ReInit(*Ctx)
 
-	// ReducerConfig is called on each reduction, before ReducerCond
+	// ReEditorConfig is called on each reduction, before ReCond
 	// if it returns a new EditorConfig, it's equivalent to State.SetConfig()
-	// but is always run before ReducerCond() so is usefull for making sure
+	// but is always run before ReCond() so is usefull for making sure
 	// configuration changes are always applied, even if Reduce() isn't called
-	ReducerConfig(*Ctx) EditorConfig
+	ReEditorConfig(*Ctx) EditorConfig
 
-	// ReducerCond is called before Reduce and ReducerMount is called
+	// ReCond is called before Reduce and ReMount is called
 	// if it returns false, no other methods are called
 	//
 	// It can be used as a pre-condition in combination with Reducer(Un)Mount
-	ReducerCond(*Ctx) bool
+	ReCond(*Ctx) bool
 
-	// ReducerMount is called once, after the first time that ReducerCond returns true
-	ReducerMount(*Ctx)
+	// ReMount is called once, after the first time that ReCond returns true
+	ReMount(*Ctx)
 
-	// ReducerUnmount is called when communication with the client will stop
-	// it is only called if ReducerMount was called
+	// ReUnmount is called when communication with the client will stop
+	// it is only called if ReMount was called
 	//
-	// It can be used to clean up any resources created in ReducerMount
+	// It can be used to clean up any resources created in ReMount
 	//
 	// After this method is called, Reduce will never be called again
-	ReducerUnmount(*Ctx)
+	ReUnmount(*Ctx)
 
 	reducerType() *ReducerType
-
-	reducerPrefixTypo
-}
-
-// reducerPrefixTypo aims to fail the build when you define a method like
-// ReduceCond()... which is a typo about 100% of the time.
-// it should be kept in sync with Reducer
-type reducerPrefixTypo interface {
-	ReduceLabel(useReducerForThePrefixNotReduce)
-	ReduceInit(useReducerForThePrefixNotReduce)
-	ReduceConfig(useReducerForThePrefixNotReduce)
-	ReduceCond(useReducerForThePrefixNotReduce)
-	ReduceMount(useReducerForThePrefixNotReduce)
-	ReduceUnmount(useReducerForThePrefixNotReduce)
 }
 
 type useReducerForThePrefixNotReduce struct{}
@@ -180,29 +164,27 @@ type reducerType struct{ ReducerType }
 func (rt *reducerType) Reduce(mx *Ctx) *State { return mx.State }
 
 // ReducerType implements all optional methods of a reducer
-type ReducerType struct {
-	reducerPrefixTypo
-}
+type ReducerType struct{}
 
 func (rt *ReducerType) reducerType() *ReducerType { return rt }
 
-// ReducerLabel implements Reducer.ReducerLabel
-func (rt *ReducerType) ReducerLabel() string { return "" }
+// ReLabel implements Reducer.ReLabel
+func (rt *ReducerType) ReLabel() string { return "" }
 
-// ReducerInit implements Reducer.ReducerInit
-func (rt *ReducerType) ReducerInit(*Ctx) {}
+// ReInit implements Reducer.ReInit
+func (rt *ReducerType) ReInit(*Ctx) {}
 
-// ReducerCond implements Reducer.ReducerCond
-func (rt *ReducerType) ReducerCond(*Ctx) bool { return true }
+// ReCond implements Reducer.ReCond
+func (rt *ReducerType) ReCond(*Ctx) bool { return true }
 
-// ReducerConfig implements Reducer.ReducerConfig
-func (rt *ReducerType) ReducerConfig(*Ctx) EditorConfig { return nil }
+// ReEditorConfig implements Reducer.ReEditorConfig
+func (rt *ReducerType) ReEditorConfig(*Ctx) EditorConfig { return nil }
 
-// ReducerMount implements Reducer.ReducerMount
-func (rt *ReducerType) ReducerMount(*Ctx) {}
+// ReMount implements Reducer.ReMount
+func (rt *ReducerType) ReMount(*Ctx) {}
 
-// ReducerUnmount implements Reducer.ReducerUnmount
-func (rt *ReducerType) ReducerUnmount(*Ctx) {}
+// ReUnmount implements Reducer.ReUnmount
+func (rt *ReducerType) ReUnmount(*Ctx) {}
 
 // reducerList is a slice of reducers
 type reducerList []Reducer
@@ -241,18 +223,18 @@ func (rl reducerList) crInit(mx *Ctx, r Reducer) {
 		return
 	}
 
-	defer mx.Profile.Push("ReducerInit").Pop()
-	r.ReducerInit(mx)
+	defer mx.Profile.Push("ReInit").Pop()
+	r.ReInit(mx)
 }
 
 func (rl reducerList) crConfig(mx *Ctx, r Reducer) EditorConfig {
-	defer mx.Profile.Push("ReducerConfig").Pop()
-	return r.ReducerConfig(mx)
+	defer mx.Profile.Push("ReEditorConfig").Pop()
+	return r.ReEditorConfig(mx)
 }
 
 func (rl reducerList) crCond(mx *Ctx, r Reducer) bool {
-	defer mx.Profile.Push("ReducerCond").Pop()
-	return r.ReducerCond(mx)
+	defer mx.Profile.Push("ReCond").Pop()
+	return r.ReCond(mx)
 }
 
 func (rl reducerList) crMount(mx *Ctx, r Reducer) {
@@ -263,7 +245,7 @@ func (rl reducerList) crMount(mx *Ctx, r Reducer) {
 
 	defer mx.Profile.Push("Mount").Pop()
 	mx.Store.mounted[k] = true
-	r.ReducerMount(mx)
+	r.ReMount(mx)
 }
 
 func (rl reducerList) crUnmount(mx *Ctx, r Reducer) bool {
@@ -273,7 +255,7 @@ func (rl reducerList) crUnmount(mx *Ctx, r Reducer) bool {
 	}
 	defer mx.Profile.Push("Unmount").Pop()
 	delete(mx.Store.mounted, k)
-	r.ReducerUnmount(mx)
+	r.ReUnmount(mx)
 	return true
 }
 
@@ -300,8 +282,8 @@ type ReduceFunc struct {
 	Label string
 }
 
-// ReducerLabel implements ReducerLabeler
-func (rf *ReduceFunc) ReducerLabel() string {
+// ReLabel implements Reducer.ReLabel
+func (rf *ReduceFunc) ReLabel() string {
 	if s := rf.Label; s != "" {
 		return s
 	}
@@ -325,7 +307,7 @@ func NewReducer(f func(*Ctx) *State) *ReduceFunc {
 // ReducerLabel returns a label for the reducer r.
 // It takes into account the ReducerLabeler interface.
 func ReducerLabel(r Reducer) string {
-	if lbl := r.ReducerLabel(); lbl != "" {
+	if lbl := r.ReLabel(); lbl != "" {
 		return lbl
 	}
 	if t := reflect.TypeOf(r); t != nil {

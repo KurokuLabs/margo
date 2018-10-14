@@ -12,16 +12,16 @@ type SyntaxCheck struct {
 	q *mgutil.ChanQ
 }
 
-func (sc *SyntaxCheck) ReducerCond(mx *mg.Ctx) bool {
+func (sc *SyntaxCheck) ReCond(mx *mg.Ctx) bool {
 	return mx.LangIs(mg.Go)
 }
 
-func (sc *SyntaxCheck) ReducerMount(mx *mg.Ctx) {
+func (sc *SyntaxCheck) ReMount(mx *mg.Ctx) {
 	sc.q = mgutil.NewChanQ(1)
 	go sc.checker()
 }
 
-func (sc *SyntaxCheck) ReducerUnmount(mx *mg.Ctx) {
+func (sc *SyntaxCheck) ReUnmount(mx *mg.Ctx) {
 	sc.q.Close()
 }
 
