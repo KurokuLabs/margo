@@ -32,16 +32,16 @@ type GocodeCalltips struct {
 	status string
 }
 
-func (gc *GocodeCalltips) ReducerCond(mx *mg.Ctx) bool {
+func (gc *GocodeCalltips) ReCond(mx *mg.Ctx) bool {
 	return mx.LangIs(mg.Go)
 }
 
-func (gc *GocodeCalltips) ReducerMount(mx *mg.Ctx) {
+func (gc *GocodeCalltips) ReMount(mx *mg.Ctx) {
 	gc.q = mgutil.NewChanQ(1)
 	go gc.processer()
 }
 
-func (gc *GocodeCalltips) ReducerUnmount(mx *mg.Ctx) {
+func (gc *GocodeCalltips) ReUnmount(mx *mg.Ctx) {
 	gc.q.Close()
 }
 
