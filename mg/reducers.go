@@ -199,45 +199,61 @@ func (rl reducerList) callReducers(mx *Ctx) *Ctx {
 func (rl reducerList) callReducer(mx *Ctx, r Reducer) *Ctx {
 	defer mx.Profile.Push(ReducerLabel(r)).Pop()
 
-	rl.crInit(mx, r)
+	reInit(mx, r)
 
-	if c := rl.crConfig(mx, r); c != nil {
+	if c := reEditorConfig(mx, r); c != nil {
 		mx = mx.SetState(mx.State.SetConfig(c))
 	}
 
-	if !rl.crCond(mx, r) {
+	if !reCond(mx, r) {
 		return mx
 	}
 
-	rl.crMount(mx, r)
+	reMount(mx, r)
 
-	if rl.crUnmount(mx, r) {
+	if reUnmount(mx, r) {
 		return mx
 	}
 
-	return rl.crReduce(mx, r)
+	return reReduce(mx, r)
 }
 
-func (rl reducerList) crInit(mx *Ctx, r Reducer) {
+func reInit(mx *Ctx, r Reducer) {
 	if _, ok := mx.Action.(initAction); !ok {
 		return
 	}
 
 	defer mx.Profile.Push("ReInit").Pop()
+
+	if x, ok := r.(interface{ ReducerInit(*Ctx) }); ok {
+		x.ReducerInit(mx)
+		return
+	}
+
 	r.ReInit(mx)
 }
 
-func (rl reducerList) crConfig(mx *Ctx, r Reducer) EditorConfig {
+func reEditorConfig(mx *Ctx, r Reducer) EditorConfig {
 	defer mx.Profile.Push("ReEditorConfig").Pop()
+
+	if x, ok := r.(interface{ ReducerConfig(*Ctx) EditorConfig }); ok {
+		return x.ReducerConfig(mx)
+	}
+
 	return r.ReEditorConfig(mx)
 }
 
-func (rl reducerList) crCond(mx *Ctx, r Reducer) bool {
+func reCond(mx *Ctx, r Reducer) bool {
 	defer mx.Profile.Push("ReCond").Pop()
+
+	if x, ok := r.(interface{ ReducerCond(*Ctx) bool }); ok {
+		return x.ReducerCond(mx)
+	}
+
 	return r.ReCond(mx)
 }
 
-func (rl reducerList) crMount(mx *Ctx, r Reducer) {
+func reMount(mx *Ctx, r Reducer) {
 	k := r.reducerType()
 	if mx.Store.mounted[k] {
 		return
@@ -245,21 +261,33 @@ func (rl reducerList) crMount(mx *Ctx, r Reducer) {
 
 	defer mx.Profile.Push("Mount").Pop()
 	mx.Store.mounted[k] = true
+
+	if x, ok := r.(interface{ ReducerMount(*Ctx) }); ok {
+		x.ReducerMount(mx)
+		return
+	}
+
 	r.ReMount(mx)
 }
 
-func (rl reducerList) crUnmount(mx *Ctx, r Reducer) bool {
+func reUnmount(mx *Ctx, r Reducer) bool {
 	k := r.reducerType()
 	if !mx.ActionIs(unmount{}) || !mx.Store.mounted[k] {
 		return false
 	}
 	defer mx.Profile.Push("Unmount").Pop()
 	delete(mx.Store.mounted, k)
-	r.ReUnmount(mx)
+
+	if x, ok := r.(interface{ ReducerUnmount(*Ctx) }); ok {
+		x.ReducerUnmount(mx)
+	} else {
+		r.ReUnmount(mx)
+	}
+
 	return true
 }
 
-func (rl reducerList) crReduce(mx *Ctx, r Reducer) *Ctx {
+func reReduce(mx *Ctx, r Reducer) *Ctx {
 	defer mx.Profile.Push("Reduce").Pop()
 	return mx.SetState(r.Reduce(mx))
 }
@@ -305,8 +333,13 @@ func NewReducer(f func(*Ctx) *State) *ReduceFunc {
 }
 
 // ReducerLabel returns a label for the reducer r.
-// It takes into account the ReducerLabeler interface.
+// It takes into account the Reducer.ReLabel method.
 func ReducerLabel(r Reducer) string {
+	if r, ok := r.(interface{ ReducerLabel() string }); ok {
+		if lbl := r.ReducerLabel(); lbl != "" {
+			return lbl
+		}
+	}
 	if lbl := r.ReLabel(); lbl != "" {
 		return lbl
 	}
