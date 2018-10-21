@@ -156,7 +156,7 @@ type DayTimeStatus struct {
 	mg.ReducerType
 }
 
-func (dts DayTimeStatus) ReMount(mx *mg.Ctx) {
+func (dts DayTimeStatus) RMount(mx *mg.Ctx) {
 	// kick off the ticker when we start
 	dispatch := mx.Store.Dispatch
 	go func() {

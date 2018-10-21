@@ -364,7 +364,7 @@ type MarGocodeCtl struct {
 	ImporterMode ImporterMode
 }
 
-func (mgc *MarGocodeCtl) ReInit(mx *mg.Ctx) {
+func (mgc *MarGocodeCtl) RInit(mx *mg.Ctx) {
 	mctl.conf(mx, mgc)
 }
 

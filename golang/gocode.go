@@ -75,7 +75,7 @@ type Gocode struct {
 	reqs chan gocodeReq
 }
 
-func (g *Gocode) ReEditorConfig(mx *mg.Ctx) mg.EditorConfig {
+func (g *Gocode) RConfig(mx *mg.Ctx) mg.EditorConfig {
 	cfg, ok := mx.Config.(sublime.Config)
 	if !ok {
 		return nil
@@ -84,7 +84,7 @@ func (g *Gocode) ReEditorConfig(mx *mg.Ctx) mg.EditorConfig {
 	// ST might query the GoSublime plugin first, so we must always disable it
 	cfg = cfg.DisableGsComplete()
 	// but we don't want to affect editor completions in non-go files
-	if !g.ReCond(mx) {
+	if !g.RCond(mx) {
 		return cfg
 	}
 
@@ -97,11 +97,11 @@ func (g *Gocode) ReEditorConfig(mx *mg.Ctx) mg.EditorConfig {
 	return cfg
 }
 
-func (g *Gocode) ReCond(mx *mg.Ctx) bool {
+func (g *Gocode) RCond(mx *mg.Ctx) bool {
 	return mx.ActionIs(mg.QueryCompletions{}) && mx.LangIs(mg.Go)
 }
 
-func (g *Gocode) ReMount(mx *mg.Ctx) {
+func (g *Gocode) RMount(mx *mg.Ctx) {
 	g.reqs = make(chan gocodeReq)
 	go func() {
 		for gr := range g.reqs {
@@ -110,7 +110,7 @@ func (g *Gocode) ReMount(mx *mg.Ctx) {
 	}()
 }
 
-func (g *Gocode) ReUnmount(mx *mg.Ctx) {
+func (g *Gocode) RUnmount(mx *mg.Ctx) {
 	close(g.reqs)
 }
 
