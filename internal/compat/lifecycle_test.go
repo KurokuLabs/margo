@@ -31,12 +31,7 @@ func (ls *lifecycleState) uncalled() string {
 
 func (ls *lifecycleState) test(t *testing.T, r mg.Reducer) {
 	t.Helper()
-
-	ag, _ := mg.NewAgent(mg.AgentConfig{
-		Stdin:  &mgutil.IOWrapper{Reader: strings.NewReader(`{}`)},
-		Stdout: &mgutil.IOWrapper{},
-		Stderr: &mgutil.IOWrapper{},
-	})
+	ag := newAgent(`{}`)
 	ag.Store.Use(r)
 	ag.Run()
 	if s := ls.uncalled(); s != "" {
@@ -105,4 +100,116 @@ func TestLifecycleMethodCalls(t *testing.T) {
 		ls := &lifecycleState{names: legacyNames()}
 		ls.test(t, &lifecycleEmbedded{&legacyLifecycle{lifecycleState: ls}})
 	})
+}
+
+func TestLifecycleMountedAndUnmounted(t *testing.T) {
+	cond := false
+	mount := false
+	unmount := false
+	r := &mg.RFunc{
+		Cond: func(*mg.Ctx) bool {
+			cond = true
+			// we want to return false if the reducer mounted
+			// this tests that RUnmount is called if RMount was called
+			// even if RCond returns false at some point in the future
+			//
+			// at the time this test was written, the implementation was wrong
+			// because if RCond returned falsed, no other method was called
+			// so it would appear correct, but that was just a coincidence
+			if mount {
+				return false
+			}
+			return true
+		},
+		Mount:   func(*mg.Ctx) { mount = true },
+		Unmount: func(*mg.Ctx) { unmount = true },
+	}
+	newAgent(`{}`, r).Run()
+	if !cond {
+		t.Fatal("Reducer.RCond was not called")
+	}
+	if !mount {
+		t.Fatal("Reducer.RMount was not called")
+	}
+	if !unmount {
+		t.Fatal("Reducer.RUnmount was not called")
+	}
+}
+
+func TestLifecycleNotMounted(t *testing.T) {
+	init := false
+	config := false
+	cond := false
+	mount := false
+	reduce := false
+	unmount := false
+	r := &mg.RFunc{
+		Init:    func(*mg.Ctx) { init = true },
+		Config:  func(*mg.Ctx) mg.EditorConfig { config = true; return nil },
+		Cond:    func(*mg.Ctx) bool { cond = true; return false },
+		Mount:   func(*mg.Ctx) { mount = true },
+		Func:    func(mx *mg.Ctx) *mg.State { reduce = true; return mx.State },
+		Unmount: func(*mg.Ctx) { unmount = true },
+	}
+	newAgent(`{}`, r).Run()
+	if !init {
+		t.Fatal("Reducer.RInit was not called")
+	}
+	if !config {
+		t.Fatal("Reducer.RConfig was not called")
+	}
+	if !cond {
+		t.Fatal("Reducer.RCond was not called")
+	}
+	if mount {
+		t.Fatal("Reducer.RMount was called")
+	}
+	if reduce {
+		t.Fatal("Reducer.Reduce was called")
+	}
+	if unmount {
+		t.Fatal("Reducer.RUnmount was called")
+	}
+}
+
+func TestLifecycleMounted(t *testing.T) {
+	init := false
+	config := false
+	mount := false
+	reduce := false
+	unmount := false
+	r := &mg.RFunc{
+		Init:   func(*mg.Ctx) { init = true },
+		Config: func(*mg.Ctx) mg.EditorConfig { config = true; return nil },
+		// Cond is implicitly true
+		Mount:   func(*mg.Ctx) { mount = true },
+		Func:    func(mx *mg.Ctx) *mg.State { reduce = true; return mx.State },
+		Unmount: func(*mg.Ctx) { unmount = true },
+	}
+	newAgent(`{}`, r).Run()
+	if !init {
+		t.Fatal("Reducer.RInit was not called")
+	}
+	if !config {
+		t.Fatal("Reducer.RConfig was not called")
+	}
+	if !mount {
+		t.Fatal("Reducer.RMount was not called")
+	}
+	if !reduce {
+		t.Fatal("Reducer.Reduce was not called")
+	}
+	if !unmount {
+		t.Fatal("Reducer.RUnmount was not called")
+	}
+}
+
+func newAgent(stdinJSON string, use ...mg.Reducer) *mg.Agent {
+	ag, _ := mg.NewAgent(mg.AgentConfig{
+		Stdin:  &mgutil.IOWrapper{Reader: strings.NewReader(stdinJSON)},
+		Stdout: &mgutil.IOWrapper{},
+		Stderr: &mgutil.IOWrapper{},
+	})
+	ag.Store.Use(use...)
+	return ag
 }
