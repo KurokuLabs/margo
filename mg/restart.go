@@ -21,15 +21,15 @@ type restartSupport struct {
 	issues IssueSet
 }
 
-func (rs *restartSupport) ReLabel() string {
+func (rs *restartSupport) RLabel() string {
 	return "Mg/Restart"
 }
 
-func (rs *restartSupport) ReInit(mx *Ctx) {
+func (rs *restartSupport) RInit(mx *Ctx) {
 	go rs.onInit(mx)
 }
 
-func (rs *restartSupport) ReCond(mx *Ctx) bool {
+func (rs *restartSupport) RCond(mx *Ctx) bool {
 	if len(rs.issues) != 0 || mx.ActionIs(rsIssues{}) {
 		return true
 	}
@@ -39,12 +39,12 @@ func (rs *restartSupport) ReCond(mx *Ctx) bool {
 	return false
 }
 
-func (rs *restartSupport) ReMount(mx *Ctx) {
+func (rs *restartSupport) RMount(mx *Ctx) {
 	rs.q = mgutil.NewChanQ(1)
 	go rs.loop()
 }
 
-func (rs *restartSupport) ReUnmount(mx *Ctx) {
+func (rs *restartSupport) RUnmount(mx *Ctx) {
 	rs.q.Close()
 }
 
@@ -136,14 +136,14 @@ func (rs *restartSupport) slowLint(mx *Ctx, pkg *build.Package) IssueSet {
 	isuOut := &IssueOut{
 		Dir:      mx.View.Dir(),
 		Patterns: mx.CommonPatterns(),
-		Base:     Issue{Label: rs.ReLabel()},
+		Base:     Issue{Label: rs.RLabel()},
 	}
 	isuOut.Write(output)
 	isuOut.Close()
 	issues := isuOut.Issues()
 
 	if err != nil {
-		mx.Log.Printf(rs.ReLabel()+": %s\n%s\n", err, output)
+		mx.Log.Printf(rs.RLabel()+": %s\n%s\n", err, output)
 	}
 	return issues
 }

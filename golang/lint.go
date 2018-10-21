@@ -20,8 +20,8 @@ type Linter struct {
 	TempDir []string
 }
 
-// ReInit syncs top-level fields with the underlying Linter
-func (lt *Linter) ReInit(mx *mg.Ctx) {
+// RInit syncs top-level fields with the underlying Linter
+func (lt *Linter) RInit(mx *mg.Ctx) {
 	l := &lt.Linter
 	l.Actions = lt.Actions
 	l.Name = lt.Name
@@ -30,12 +30,12 @@ func (lt *Linter) ReInit(mx *mg.Ctx) {
 	l.Label = lt.Label
 	l.TempDir = lt.TempDir
 
-	lt.Linter.ReInit(mx)
+	lt.Linter.RInit(mx)
 }
 
-// ReCond restricts reduction to Go
-func (lt *Linter) ReCond(mx *mg.Ctx) bool {
-	return mx.LangIs(mg.Go) && lt.Linter.ReCond(mx)
+// RCond restricts reduction to Go files
+func (lt *Linter) RCond(mx *mg.Ctx) bool {
+	return mx.LangIs(mg.Go) && lt.Linter.RCond(mx)
 }
 
 // GoInstall returns a Linter that runs `go install args...`
