@@ -66,7 +66,7 @@ func (rs *restartSupport) loop() {
 
 func (rs *restartSupport) mgPkg(mx *Ctx) *build.Package {
 	v := mx.View
-	if !strings.HasSuffix(v.Path, ".go") {
+	if !strings.HasSuffix(v.Path, ".go") || strings.HasSuffix(v.Path, "_test.go") {
 		return nil
 	}
 
