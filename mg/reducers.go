@@ -315,39 +315,115 @@ func (rl reducerList) reduction(mx *Ctx) *Ctx {
 	return mx
 }
 
-// ReduceFunc wraps a function to be used as a reducer
+// RFunc wraps a function to be used as a reducer
 // New instances should ideally be created using the global NewReducer() function
-type ReduceFunc struct {
+type RFunc struct {
 	ReducerType
-
-	// Func is the function to be used for the reducer
-	Func func(*Ctx) *State
 
 	// Label is an optional string that may be used as a name for the reducer.
 	// If unset, a name based on the Func type will be used.
 	Label string
+
+	// Func is the equivalent of Reducer.Reduce
+	// If Func is nil, the current state is returned as-is
+	Func func(*Ctx) *State
+
+	// The following optional fields correspond with the Reducer lifecycle methods
+
+	// Init is the equivalent of Reducer.RInit
+	Init func(mx *Ctx)
+
+	// Cond is the equivalent of Reducer.RCond
+	Cond func(mx *Ctx) bool
+
+	// RCnfig is the equivalent of Reducer.RConfig
+	Config func(mx *Ctx) EditorConfig
+
+	// Rount is the equivalent of Reducer.RMount
+	Mount func(mx *Ctx)
+
+	// RUnount is the equivalent of Reducer.RUnmount
+	Unmount func(mx *Ctx)
 }
 
+// ReduceFunc is an alias for RFunc
+type ReduceFunc = RFunc
+
 // RLabel implements Reducer.RLabel
-func (rf *ReduceFunc) RLabel() string {
+func (rf *RFunc) RLabel() string {
 	if s := rf.Label; s != "" {
 		return s
 	}
 	nm := ""
-	if p := runtime.FuncForPC(reflect.ValueOf(rf.Func).Pointer()); p != nil {
-		nm = p.Name()
+	if rf.Func != nil {
+		p := runtime.FuncForPC(reflect.ValueOf(rf.Func).Pointer())
+		if p == nil {
+			nm = p.Name()
+		}
 	}
 	return "mg.Reduce(" + nm + ")"
 }
 
-// Reduce implements the Reducer interface, delegating to ReduceFunc.Func
-func (rf *ReduceFunc) Reduce(mx *Ctx) *State {
-	return rf.Func(mx)
+// RInit delegates to RFunc.Init if it's not nil
+func (rf *RFunc) RInit(mx *Ctx) {
+	if rf.Init != nil {
+		rf.Init(mx)
+	} else {
+		rf.ReducerType.RInit(mx)
+	}
 }
 
-// NewReducer creates a new ReduceFunc
-func NewReducer(f func(*Ctx) *State) *ReduceFunc {
-	return &ReduceFunc{Func: f}
+// RCond delegates to RFunc.Cond if it's not nil
+func (rf *RFunc) RCond(mx *Ctx) bool {
+	if rf.Cond != nil {
+		return rf.Cond(mx)
+	}
+	return rf.ReducerType.RCond(mx)
+}
+
+// RConfig delegates to RFunc.Config if it's not nil
+func (rf *RFunc) RConfig(mx *Ctx) EditorConfig {
+	if rf.Config != nil {
+		return rf.Config(mx)
+	}
+	return rf.ReducerType.RConfig(mx)
+}
+
+// RMount delegates to RFunc.Mount if it's not nil
+func (rf *RFunc) RMount(mx *Ctx) {
+	if rf.Mount != nil {
+		rf.Mount(mx)
+	} else {
+		rf.ReducerType.RMount(mx)
+	}
+}
+
+// RUnmount delegates to RFunc.Unmount if it's not nil
+func (rf *RFunc) RUnmount(mx *Ctx) {
+	if rf.Unmount != nil {
+		rf.Unmount(mx)
+	} else {
+		rf.ReducerType.RUnmount(mx)
+	}
+}
+
+// Reduce implements the Reducer interface, delegating to RFunc.Func if it's not nil
+func (rf *RFunc) Reduce(mx *Ctx) *State {
+	if rf.Func != nil {
+		return rf.Func(mx)
+	}
+	return mx.State
+}
+
+// NewReducer creates a new RFunc
+// reduce can be nil, in which case RFunc.Reduce method will simply return the current state
+// each function in options is called on the newly created RFunc
+func NewReducer(reduce func(*Ctx) *State, options ...func(*RFunc)) *RFunc {
+	rf := &RFunc{Func: reduce}
+	for _, o := range options {
+		o(rf)
+	}
+	return rf
 }
 
 // ReducerLabel returns a label for the reducer r.
