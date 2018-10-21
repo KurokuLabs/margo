@@ -243,6 +243,8 @@ func (rt *ReducerType) reduction(mx *Ctx, r Reducer) *Ctx {
 	}
 
 	if !rt.cond(mx) {
+		// if mount was called, unmount must be called, even if cond returns false
+		rt.unmount(mx)
 		return mx
 	}
 
@@ -285,7 +287,7 @@ func (rt *ReducerType) mount(mx *Ctx) {
 }
 
 func (rt *ReducerType) unmount(mx *Ctx) bool {
-	if !mx.ActionIs(unmount{}) || rt.unmounted {
+	if !rt.mounted || rt.unmounted || !mx.ActionIs(unmount{}) {
 		return false
 	}
 
