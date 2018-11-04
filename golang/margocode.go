@@ -65,8 +65,7 @@ type marGocodeCtl struct {
 
 	ipbn struct {
 		sync.RWMutex
-		initOnce sync.Once
-		m        map[string]string
+		m map[string]string
 	}
 }
 
@@ -194,13 +193,25 @@ func newMarGocodeCtl() *marGocodeCtl {
 	return mgc
 }
 
-func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
+func (mgc *marGocodeCtl) RCond(mx *mg.Ctx) bool {
 	if mx.LangIs(mg.Go) {
-		mgc.ipbn.initOnce.Do(func() {
-			go mgc.initIPBN(mx)
-		})
+		return true
 	}
+	if act, ok := mx.Action.(mg.RunCmd); ok {
+		for _, c := range mgc.cmds() {
+			if c.Name == act.Name {
+				return true
+			}
+		}
+	}
+	return false
+}
 
+func (mgc *marGocodeCtl) RMount(mx *mg.Ctx) {
+	go mgc.initIPBN(mx)
+}
+
+func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
 	switch mx.Action.(type) {
 	case mg.RunCmd:
 		return mx.AddBuiltinCmds(mgc.cmds()...)
