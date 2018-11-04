@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/build"
 	"go/importer"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"golang.org/x/tools/go/gcexportdata"
@@ -58,7 +59,7 @@ type marGocodeCtl struct {
 	mxQ *mgutil.ChanQ
 
 	mu     sync.RWMutex
-	cfg    MarGocodeCtl
+	mgcctl MarGocodeCtl
 	pkgs   *mgcCache
 	cmdMap map[string]func(*mg.CmdCtx)
 	logs   *log.Logger
@@ -70,12 +71,9 @@ type marGocodeCtl struct {
 }
 
 func (mgc *marGocodeCtl) importerFactories() (newDefaultImporter, newFallbackImporter importerFactory, srcMode bool) {
-	mgc.mu.RLock()
-	defer mgc.mu.RUnlock()
-
 	s := mgc.newSrcImporter
 	b := mgc.newBinImporter
-	switch mgc.cfg.ImporterMode {
+	switch mgc.cfg().ImporterMode {
 	case SrcImporterWithFallback:
 		return s, b, true
 	case SrcImporterOnly:
@@ -140,6 +138,41 @@ func (mgc *marGocodeCtl) newBinImporter(mx *mg.Ctx, overlay types.ImporterFrom) 
 	return importer.Default().(types.ImporterFrom)
 }
 
+func (mgc *marGocodeCtl) processQ(mx *mg.Ctx) {
+	defer func() { recover() }()
+
+	switch mx.Action.(type) {
+	case mg.ViewModified, mg.ViewSaved:
+		mgc.autoPruneCache(mx)
+	case mg.ViewActivated:
+		mgc.preloadPackages(mx)
+	}
+}
+
+func (mgc *marGocodeCtl) preloadPackages(mx *mg.Ctx) {
+	if mgc.cfg().NoPreloading {
+		return
+	}
+
+	v := mx.View
+	src, _ := v.ReadAll()
+	if len(src) == 0 {
+		return
+	}
+
+	fset := token.NewFileSet()
+	af, _ := parser.ParseFile(fset, v.Filename(), src, parser.ImportsOnly)
+	if af == nil || len(af.Imports) == 0 {
+		return
+	}
+
+	dir := v.Dir()
+	gsu := mgc.newGcSuggest(mx)
+	for _, spec := range af.Imports {
+		gsu.imp.ImportFrom(unquote(spec.Path.Value), dir, 0)
+	}
+}
+
 func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 	// TODO: do this in a goroutine?
 	// we're not directly in the QueryCompletions hot path
@@ -154,9 +187,7 @@ func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 		}
 	}
 
-	mgc.mu.RLock()
-	dpr := mgc.cfg.DebugPrune
-	mgc.mu.RUnlock()
+	dpr := mgc.cfg().DebugPrune
 
 	if dpr != nil {
 		mgc.pkgs.forEach(func(e mgcCacheEnt) bool {
@@ -168,9 +199,16 @@ func (mgc *marGocodeCtl) autoPruneCache(mx *mg.Ctx) {
 	}
 }
 
+func (mgc *marGocodeCtl) cfg() MarGocodeCtl {
+	mgc.mu.RLock()
+	defer mgc.mu.RUnlock()
+
+	return mgc.mgcctl
+}
+
 func (mgc *marGocodeCtl) configure(f func(*marGocodeCtl)) {
-	mctl.mu.Lock()
-	defer mctl.mu.Unlock()
+	mgc.mu.Lock()
+	defer mgc.mu.Unlock()
 
 	f(mgc)
 }
@@ -187,7 +225,7 @@ func newMarGocodeCtl() *marGocodeCtl {
 	mgc.mxQ = mgutil.NewChanQ(10)
 	go func() {
 		for v := range mgc.mxQ.C() {
-			mgc.autoPruneCache(v.(*mg.Ctx))
+			mgc.processQ(v.(*mg.Ctx))
 		}
 	}()
 	return mgc
@@ -215,7 +253,7 @@ func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
 	switch mx.Action.(type) {
 	case mg.RunCmd:
 		return mx.AddBuiltinCmds(mgc.cmds()...)
-	case mg.ViewModified, mg.ViewSaved:
+	case mg.ViewModified, mg.ViewSaved, mg.ViewActivated:
 		// ViewSaved is probably not required, but saving might result in a `go install`
 		// which results in an updated package.a file
 		mgc.mxQ.Put(mx)
@@ -267,10 +305,7 @@ func (mgc *marGocodeCtl) initIPBN(mx *mg.Ctx) {
 
 // srcMode returns true if the importMode is not SrcImporterOnly or SrcImporterWithFallback
 func (mgc *marGocodeCtl) srcMode() bool {
-	mgc.mu.RLock()
-	defer mgc.mu.RUnlock()
-
-	switch mgc.cfg.ImporterMode {
+	switch mgc.cfg().ImporterMode {
 	case SrcImporterOnly, SrcImporterWithFallback:
 		return true
 	case BinImporterOnly:
@@ -470,7 +505,7 @@ func (mgc *marGocodeCtl) newGcSuggest(mx *mg.Ctx) *gcSuggest {
 	mgc.mu.RLock()
 	defer mgc.mu.RUnlock()
 
-	gsu := &gcSuggest{cfg: mgc.cfg}
+	gsu := &gcSuggest{cfg: mgc.cfg()}
 	gsu.imp = gsu.newGsuImporter(mx)
 	return gsu
 }
@@ -518,6 +553,9 @@ type MarGocodeCtl struct {
 	// e.g. after `json.` is typed, `import "encoding/json"` added to the code
 	AddUnimportedPackages bool
 
+	// Don't preload packages to speed up auto-completion, etc.
+	NoPreloading bool
+
 	// Don't propose builtin types and functions
 	NoBuiltins bool
 
@@ -527,7 +565,7 @@ type MarGocodeCtl struct {
 
 func (mgc *MarGocodeCtl) RInit(mx *mg.Ctx) {
 	mctl.configure(func(m *marGocodeCtl) {
-		m.cfg = *mgc
+		m.mgcctl = *mgc
 		if mgc.Debug {
 			m.logs = mx.Log.Dbg
 		}

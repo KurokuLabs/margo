@@ -93,6 +93,9 @@ func Margo(m mg.Args) {
 			// e.g. after `json.` is typed, `import "encoding/json"` added to the code
 			AddUnimportedPackages: false,
 
+			// Don't preload packages to speed up auto-completion, etc.
+			NoPreloading: false,
+
 			// Don't suggest builtin types and functions
 			// gs: this replaces the `autocomplete_builtins` setting
 			NoBuiltins: false,
