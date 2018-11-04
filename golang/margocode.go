@@ -107,12 +107,8 @@ func (mgc *marGocodeCtl) ipbnFromCache(pkgName string) string {
 	importPath := ""
 	mgc.pkgs.forEach(func(e mgcCacheEnt) bool {
 		if p := e.Pkg; p.Name() == pkgName {
-			importPath = p.Path()
-			// presence of the vendor directory requires knowing
-			// where the srcDir of the import and we don't currently store that
-			if !strings.Contains(importPath, "/vendor/") {
-				return false
-			}
+			importPath = e.Key.Path
+			return false
 		}
 		return true
 	})
