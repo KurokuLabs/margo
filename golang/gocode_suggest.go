@@ -23,6 +23,7 @@ type gsuImpRes struct {
 
 type gcSuggest struct {
 	suggestDebug bool
+	partials     bool
 
 	cfg MarGocodeCtl
 
@@ -40,10 +41,24 @@ func (gsu *gcSuggest) newGsuImporter(mx *mg.Ctx) *gsuImporter {
 	return gi
 }
 
-func (gsu *gcSuggest) suggestions(mx *mg.Ctx) suggestions {
+func (gsu *gcSuggest) noPartialsPos(src []byte, pos int) int {
+	// move the cursor off the word.
+	// xxx.yyy| ~> xxx.|
+	// xxx| ~> |xxx
+	// this results in fetching all possible results
+	// which is desirable because the editor is usually better at filtering the list
+	return consumeLeft(src, pos, IsLetter)
+}
+
+func (gsu *gcSuggest) suggestions(mx *mg.Ctx, src []byte, pos int) suggestions {
+	defer mx.Profile.Push("suggestions").Pop()
+
 	sugg := suggestions{}
 
-	defer mx.Profile.Push("suggestions").Pop()
+	if len(src) == 0 {
+		return sugg
+	}
+
 	gsu.Lock()
 	defer gsu.Unlock()
 
@@ -82,11 +97,10 @@ func (gsu *gcSuggest) suggestions(mx *mg.Ctx) suggestions {
 		}
 	}
 
-	v := mx.View
-	src, pos := v.SrcPos()
-	if len(src) != 0 {
-		sugg.candidates, _ = cfg.Suggest(v.Filename(), src, pos)
+	if !gsu.partials {
+		pos = gsu.noPartialsPos(src, pos)
 	}
+	sugg.candidates, _ = cfg.Suggest(mx.View.Filename(), src, pos)
 	return sugg
 }
 
