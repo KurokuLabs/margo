@@ -218,3 +218,25 @@ func Dedent(s string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func consumeLeft(src []byte, pos int, cond func(rune) bool) int {
+	for {
+		r, n := utf8.DecodeLastRune(src[:pos])
+		if !cond(r) {
+			break
+		}
+		pos -= n
+	}
+	return pos
+}
+
+func consumeRight(src []byte, pos int, cond func(rune) bool) int {
+	for {
+		r, n := utf8.DecodeRune(src[pos:])
+		if !cond(r) {
+			break
+		}
+		pos += n
+	}
+	return pos
+}
