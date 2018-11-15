@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"margo.sh/mg"
+	"margo.sh/mgutil"
 	"margo.sh/why_would_you_make_yotsuba_cry"
 	"os"
 	"path/filepath"
@@ -311,23 +312,9 @@ func Dedent(s string) string {
 }
 
 func consumeLeft(src []byte, pos int, cond func(rune) bool) int {
-	for {
-		r, n := utf8.DecodeLastRune(src[:pos])
-		if !cond(r) {
-			break
-		}
-		pos -= n
-	}
-	return pos
+	return mgutil.RepositionLeft(src, pos, cond)
 }
 
 func consumeRight(src []byte, pos int, cond func(rune) bool) int {
-	for {
-		r, n := utf8.DecodeRune(src[pos:])
-		if !cond(r) {
-			break
-		}
-		pos += n
-	}
-	return pos
+	return mgutil.RepositionRight(src, pos, cond)
 }
