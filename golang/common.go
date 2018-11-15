@@ -107,14 +107,7 @@ type cursorNode struct {
 	Node       ast.Node
 }
 
-func (cn *cursorNode) Visit(node ast.Node) ast.Visitor {
-	if NodeEnclosesPos(node, cn.Pos) {
-		cn.Append(node)
-	}
-	return cn
-}
-
-func (cn *cursorNode) Append(n ast.Node) {
+func (cn *cursorNode) append(n ast.Node) {
 	for _, x := range cn.Nodes {
 		if n == x {
 			return
@@ -185,14 +178,19 @@ func (cn *cursorNode) init(kvs mg.KVStore, src []byte, offset int) {
 	cn.Pos = token.Pos(pf.TokenFile.Base() + offset)
 
 	if astFileIsValid(af) && cn.Pos > af.Name.End() {
-		cn.Append(af)
-		ast.Walk(cn, af)
+		cn.append(af)
+		ast.Inspect(af, func(n ast.Node) bool {
+			if NodeEnclosesPos(n, cn.Pos) {
+				cn.append(n)
+			}
+			return true
+		})
 	}
 
 	for _, cg := range af.Comments {
 		for _, c := range cg.List {
 			if NodeEnclosesPos(c, cn.Pos) {
-				cn.Append(c)
+				cn.append(c)
 			}
 		}
 	}
@@ -248,8 +246,8 @@ func (cn *cursorNode) init(kvs mg.KVStore, src []byte, offset int) {
 		}
 
 		cn.Doc = &DocNode{
-			Node: n,
-			List: cg.List,
+			Node:         n,
+			CommentGroup: *cg,
 		}
 		return true
 	}

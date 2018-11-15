@@ -100,21 +100,7 @@ func (cs CursorScope) All(scopes ...CursorScope) bool {
 
 type DocNode struct {
 	Node ast.Node
-	List []*ast.Comment
-}
-
-func (n *DocNode) Pos() token.Pos {
-	if l := n.List; len(l) != 0 {
-		return l[0].Pos()
-	}
-	return token.NoPos
-}
-
-func (n *DocNode) End() token.Pos {
-	if l := n.List; len(l) != 0 {
-		return l[len(l)-1].End()
-	}
-	return token.NoPos
+	ast.CommentGroup
 }
 
 type CompletionCtx = CursorCtx
