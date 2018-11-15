@@ -126,6 +126,17 @@ func NewViewCursorCtx(mx *mg.Ctx) *CursorCtx {
 }
 
 func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
+	pos = mgutil.ClampPos(src, pos)
+
+	// if we're at the end of the line, move the cursor onto the last thing on the line
+	space := func(r rune) bool { return r == ' ' || r == '\t' }
+	if i := mgutil.RepositionRight(src, pos, space); i < len(src) && src[i] == '\n' {
+		pos = mgutil.RepositionLeft(src, pos, space)
+		if j := pos - 1; j >= 0 && src[j] != '\n' {
+			pos = j
+		}
+	}
+
 	cx := &CursorCtx{
 		Ctx:  mx,
 		View: mx.View,
