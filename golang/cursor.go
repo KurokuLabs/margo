@@ -10,34 +10,48 @@ import (
 
 const (
 	cursorScopesStart CursorScope = 1 << iota
-	PackageScope
-	FileScope
-	DeclScope
+	AssignmentScope
 	BlockScope
-	ImportScope
-	ConstScope
-	VarScope
-	TypeScope
 	CommentScope
-	StringScope
+	ConstScope
+	DeclScope
+	DeferScope
+	DocScope
+	FileScope
+	IdentScope
 	ImportPathScope
+	ImportScope
+	PackageScope
+	ReturnScope
+	SelectorScope
+	StringScope
+	TypeScope
+	VarScope
 	cursorScopesEnd
 )
 
 var (
 	cursorScopeNames = map[CursorScope]string{
-		PackageScope:    "PackageScope",
-		FileScope:       "FileScope",
-		DeclScope:       "DeclScope",
+		AssignmentScope: "AssignmentScope",
 		BlockScope:      "BlockScope",
-		ImportScope:     "ImportScope",
-		ConstScope:      "ConstScope",
-		VarScope:        "VarScope",
-		TypeScope:       "TypeScope",
 		CommentScope:    "CommentScope",
-		StringScope:     "StringScope",
+		ConstScope:      "ConstScope",
+		DeclScope:       "DeclScope",
+		DeferScope:      "DeferScope",
+		DocScope:        "DocScope",
+		FileScope:       "FileScope",
+		IdentScope:      "IdentScope",
 		ImportPathScope: "ImportPathScope",
+		ImportScope:     "ImportScope",
+		PackageScope:    "PackageScope",
+		ReturnScope:     "ReturnScope",
+		SelectorScope:   "SelectorScope",
+		StringScope:     "StringScope",
+		TypeScope:       "TypeScope",
+		VarScope:        "VarScope",
 	}
+
+	_ ast.Node = (*DocNode)(nil)
 )
 
 type CursorScope uint64
@@ -49,7 +63,7 @@ func (cs CursorScope) String() string {
 	}
 	l := []string{}
 	for scope, name := range cursorScopeNames {
-		if cs.Is(scope) {
+		if cs.Any(scope) {
 			l = append(l, name)
 		}
 	}
@@ -57,8 +71,13 @@ func (cs CursorScope) String() string {
 	return strings.Join(l, "|")
 }
 
-func (cs CursorScope) Is(scope CursorScope) bool {
-	return cs&scope != 0
+func (cs CursorScope) Is(scopes ...CursorScope) bool {
+	for _, s := range scopes {
+		if s == cs {
+			return true
+		}
+	}
+	return false
 }
 
 func (cs CursorScope) Any(scopes ...CursorScope) bool {
@@ -79,11 +98,30 @@ func (cs CursorScope) All(scopes ...CursorScope) bool {
 	return true
 }
 
+type DocNode struct {
+	Node ast.Node
+	List []*ast.Comment
+}
+
+func (n *DocNode) Pos() token.Pos {
+	if l := n.List; len(l) != 0 {
+		return l[0].Pos()
+	}
+	return token.NoPos
+}
+
+func (n *DocNode) End() token.Pos {
+	if l := n.List; len(l) != 0 {
+		return l[len(l)-1].End()
+	}
+	return token.NoPos
+}
+
 type CompletionCtx = CursorCtx
 type CursorCtx struct {
-	*mg.Ctx
-	CursorNode *CursorNode
-	AstFile    *ast.File
+	cursorNode
+	Ctx        *mg.Ctx
+	View       *mg.View
 	Scope      CursorScope
 	PkgName    string
 	IsTestFile bool
@@ -99,21 +137,26 @@ func NewViewCursorCtx(mx *mg.Ctx) *CursorCtx {
 }
 
 func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
-	cn := ParseCursorNode(mx.Store, src, pos)
-	af := cn.AstFile
+	cx := &CursorCtx{
+		Ctx:  mx,
+		View: mx.View,
+	}
+	cx.init(mx.Store, src, pos)
+
+	af := cx.AstFile
 	if af == nil {
 		af = NilAstFile
 	}
-	cx := &CursorCtx{
-		Ctx:        mx,
-		CursorNode: cn,
-		AstFile:    af,
-		PkgName:    af.Name.String(),
-	}
+	cx.PkgName = af.Name.String()
+
 	cx.IsTestFile = strings.HasSuffix(mx.View.Filename(), "_test.go") ||
 		strings.HasSuffix(cx.PkgName, "_test")
 
-	if cn.Comment != nil {
+	if cx.Comment != nil {
+		cx.Scope |= CommentScope
+	}
+	if cx.Doc != nil {
+		cx.Scope |= DocScope
 		cx.Scope |= CommentScope
 	}
 
@@ -123,7 +166,7 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		return cx
 	}
 
-	switch x := cx.CursorNode.Node.(type) {
+	switch x := cx.Node.(type) {
 	case nil:
 		cx.Scope |= PackageScope
 	case *ast.File:
@@ -131,12 +174,27 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 	case *ast.BlockStmt:
 		cx.Scope |= BlockScope
 	case *ast.CaseClause:
-		if NodeEnclosesPos(PosEnd{x.Colon, x.End()}, cn.Pos) {
+		if NodeEnclosesPos(PosEnd{x.Colon, x.End()}, cx.Pos) {
 			cx.Scope |= BlockScope
 		}
+	case *ast.Ident:
+		cx.Scope |= IdentScope
 	}
 
-	if gd := cn.GenDecl; gd != nil {
+	cx.Each(func(n ast.Node) {
+		switch n.(type) {
+		case *ast.AssignStmt:
+			cx.Scope |= AssignmentScope
+		case *ast.SelectorExpr:
+			cx.Scope |= SelectorScope
+		case *ast.ReturnStmt:
+			cx.Scope |= ReturnScope
+		case *ast.DeferStmt:
+			cx.Scope |= DeferScope
+		}
+	})
+
+	if gd := cx.GenDecl; gd != nil {
 		switch gd.Tok {
 		case token.IMPORT:
 			cx.Scope |= ImportScope
@@ -149,11 +207,10 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		}
 	}
 
-	if lit := cn.BasicLit; lit != nil && lit.Kind == token.STRING {
-		if cn.ImportSpec != nil {
+	if lit := cx.BasicLit; lit != nil && lit.Kind == token.STRING {
+		cx.Scope |= StringScope
+		if cx.ImportSpec != nil {
 			cx.Scope |= ImportPathScope
-		} else {
-			cx.Scope |= StringScope
 		}
 	}
 
@@ -162,11 +219,10 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 
 func (cx *CursorCtx) funcName() (name string, isMethod bool) {
 	var fd *ast.FuncDecl
-	cn := cx.CursorNode
-	if !cn.Set(&fd) {
+	if !cx.Set(&fd) {
 		return "", false
 	}
-	if fd.Name == nil || !NodeEnclosesPos(fd.Name, cx.CursorNode.Pos) {
+	if fd.Name == nil || !NodeEnclosesPos(fd.Name, cx.Pos) {
 		return "", false
 	}
 	return fd.Name.Name, fd.Recv != nil

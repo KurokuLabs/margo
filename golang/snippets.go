@@ -5,7 +5,6 @@ import (
 	"margo.sh/mg"
 	"regexp"
 	"unicode"
-	"unicode/utf8"
 )
 
 var (
@@ -39,25 +38,7 @@ func (sf *SnippetFuncsList) RCond(mx *mg.Ctx) bool {
 }
 
 func (sf *SnippetFuncsList) Reduce(mx *mg.Ctx) *mg.State {
-	src, _ := mx.View.ReadAll()
-	pos := mx.View.Pos
-	if pos < 0 || pos > len(src) {
-		return mx.State
-	}
-
-	// TODO: is this correct?
-	for {
-		r, n := utf8.DecodeLastRune(src[:pos])
-		if !IsLetter(r) {
-			break
-		}
-		pos -= n
-	}
-	cx := NewCompletionCtx(mx, src, pos)
-	if cx.Scope.Any(StringScope, ImportPathScope, CommentScope) {
-		return mx.State
-	}
-
+	cx := NewViewCursorCtx(mx)
 	var cl []mg.Completion
 	for _, f := range sf.Funcs {
 		cl = append(cl, f(cx)...)
@@ -202,7 +183,7 @@ func FuncSnippet(cx *CompletionCtx) []mg.Completion {
 		}
 	}
 
-	if cx.Scope.Any(BlockScope, VarScope) {
+	if cx.Scope.Is(BlockScope, VarScope) {
 		return []mg.Completion{{
 			Query: `func`,
 			Title: `func() {...}`,
@@ -228,7 +209,7 @@ func receiverName(typeName string) string {
 }
 
 func MethodSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.IsTestFile || !cx.Scope.Is(FileScope) {
+	if !cx.Scope.Is(FileScope) {
 		return nil
 	}
 
@@ -341,7 +322,7 @@ func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func MapSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Any(VarScope, BlockScope) {
+	if !cx.Scope.Is(VarScope, BlockScope) {
 		return nil
 	}
 	return []mg.Completion{
@@ -359,7 +340,7 @@ func MapSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func TypeSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Any(FileScope, BlockScope) {
+	if !cx.Scope.Is(FileScope, BlockScope) {
 		return nil
 	}
 	return []mg.Completion{
