@@ -108,6 +108,12 @@ type cursorNode struct {
 }
 
 func (cn *cursorNode) append(n ast.Node) {
+	// ignore bad nodes, they usually just make scope detection fail with no obvious benefit
+	switch n.(type) {
+	case *ast.BadDecl, *ast.BadExpr, *ast.BadStmt:
+		return
+	}
+
 	for _, x := range cn.Nodes {
 		if n == x {
 			return
