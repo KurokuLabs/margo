@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"margo.sh/mg"
+	"margo.sh/mgutil"
 	"sort"
 	"strings"
 )
@@ -17,6 +18,7 @@ const (
 	DeclScope
 	DeferScope
 	DocScope
+	ExprScope
 	FileScope
 	IdentScope
 	ImportPathScope
@@ -39,6 +41,7 @@ var (
 		DeclScope:       "DeclScope",
 		DeferScope:      "DeferScope",
 		DocScope:        "DocScope",
+		ExprScope:       "ExprScope",
 		FileScope:       "FileScope",
 		IdentScope:      "IdentScope",
 		ImportPathScope: "ImportPathScope",
@@ -198,6 +201,18 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		if cx.ImportSpec != nil {
 			cx.Scope |= ImportPathScope
 		}
+	}
+
+	if cx.Scope.Is(
+		AssignmentScope,
+		ConstScope,
+		DeferScope,
+		IdentScope,
+		ReturnScope,
+		SelectorScope,
+		VarScope,
+	) {
+		cx.Scope |= ExprScope
 	}
 
 	return cx
