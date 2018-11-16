@@ -116,7 +116,7 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 	space := func(r rune) bool { return r == ' ' || r == '\t' }
 	if i := mgutil.RepositionRight(src, pos, space); i < len(src) && src[i] == '\n' {
 		pos = mgutil.RepositionLeft(src, pos, space)
-		if j := pos - 1; j >= 0 && src[j] != '\n' {
+		if j := pos - 1; j >= 0 && src[j] != '\n' && src[j] != '}' {
 			pos = j
 		}
 	}
