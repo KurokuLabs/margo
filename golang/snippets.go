@@ -137,7 +137,7 @@ func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope == FileScope {
+	if cx.Scope == FileScope || cx.Scope.Is(FuncDeclScope) {
 		comp := mg.Completion{
 			Query: `func`,
 			Title: `name() {...}`,
@@ -209,7 +209,7 @@ func receiverName(typeName string) string {
 }
 
 func MethodSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope != FileScope {
+	if cx.Scope != FileScope && !cx.Scope.Is(FuncDeclScope) {
 		return nil
 	}
 
