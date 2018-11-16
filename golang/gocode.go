@@ -373,7 +373,15 @@ func initGocodeReducer(mx *mg.Ctx, g Gocode) *gocodeCtx {
 	}
 
 	cx := NewCursorCtx(mx, src, pos)
-	if cx.Scope.Is(PackageScope, FileScope, ImportScope, StringScope, CommentScope) {
+	if cx.Scope.Is(
+		PackageScope,
+		FileScope,
+		ImportScope,
+		StringScope,
+		CommentScope,
+		FuncDeclScope,
+		TypeDeclScope,
+	) {
 		return nil
 	}
 
