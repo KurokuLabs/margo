@@ -64,9 +64,10 @@ type marGocodeCtl struct {
 	cmdMap map[string]func(*mg.CmdCtx)
 	logs   *log.Logger
 
-	ipbn struct {
+	knownPaths struct {
 		sync.RWMutex
-		m map[string]string
+		name map[string]string
+		path map[string]string
 	}
 }
 
@@ -85,8 +86,26 @@ func (mgc *marGocodeCtl) importerFactories() (newDefaultImporter, newFallbackImp
 	}
 }
 
+func (mgc *marGocodeCtl) knownImportPaths() map[string]string {
+	kp := &mgc.knownPaths
+	kp.RLock()
+	defer kp.RUnlock()
+
+	m := make(map[string]string, mgc.pkgs.size()+len(kp.path))
+	for pth, nm := range kp.path {
+		m[pth] = nm
+	}
+	mgc.pkgs.forEach(func(e mgcCacheEnt) bool {
+		m[e.Key.Path] = e.Pkg.Name()
+		return true
+	})
+	return m
+}
+
 // importPathByName returns an import path whose pkg's name is pkgName
 func (mgc *marGocodeCtl) importPathByName(pkgName string) string {
+	kp := &mgc.knownPaths
+
 	// try the cache first
 	// it includes packages the user actually imported
 	// so there's theoretically a better chance of importing the ideal package
@@ -95,15 +114,12 @@ func (mgc *marGocodeCtl) importPathByName(pkgName string) string {
 		return p
 	}
 
-	mgc.ipbn.RLock()
-	defer mgc.ipbn.RUnlock()
-	return mgc.ipbn.m[pkgName]
+	kp.RLock()
+	defer kp.RUnlock()
+	return kp.name[pkgName]
 }
 
 func (mgc *marGocodeCtl) ipbnFromCache(pkgName string) string {
-	mgc.mu.RLock()
-	defer mgc.mu.RUnlock()
-
 	importPath := ""
 	mgc.pkgs.forEach(func(e mgcCacheEnt) bool {
 		if p := e.Pkg; p.Name() == pkgName {
@@ -261,7 +277,7 @@ func (mgc *marGocodeCtl) Reduce(mx *mg.Ctx) *mg.State {
 func (mgc *marGocodeCtl) initIPBN(mx *mg.Ctx) {
 	// TODO: scan GOPATH as well
 
-	cmd := exec.Command("go", "list", "-f={{.Name}},{{.ImportPath}}", "std")
+	cmd := exec.Command("go", "list", "-e", "-f={{.Name}},{{.ImportPath}}", "std")
 	outBuf := &bytes.Buffer{}
 	errBuf := &bytes.Buffer{}
 	cmd.Stdout = outBuf
@@ -270,14 +286,16 @@ func (mgc *marGocodeCtl) initIPBN(mx *mg.Ctx) {
 		mx.Log.Printf("``` %s ```\n%s\n%s\n", mgutil.QuoteCmd(cmd.Path, cmd.Args...), errBuf.Bytes(), err)
 	}
 
-	mgc.ipbn.Lock()
-	defer mgc.ipbn.Unlock()
+	kp := &mgc.knownPaths
+	kp.Lock()
+	defer kp.Unlock()
 
-	if mgc.ipbn.m == nil {
-		mgc.ipbn.m = map[string]string{}
+	if kp.name == nil {
+		kp.name = map[string]string{}
 	}
-	m := mgc.ipbn.m
-
+	if kp.path == nil {
+		kp.path = map[string]string{}
+	}
 	skip := map[string]bool{
 		"":         true,
 		"cmd":      true,
@@ -296,8 +314,9 @@ func (mgc *marGocodeCtl) initIPBN(mx *mg.Ctx) {
 		if nm == "" {
 			nm = path.Base(pth)
 		}
+		kp.path[pth] = nm
 		if !skip[nm] && !skip[strings.Split(pth, "/")[0]] {
-			m[nm] = pth
+			kp.name[nm] = pth
 		}
 	}
 }
@@ -437,12 +456,13 @@ func (mgc *marGocodeCtl) unimportedPackagesCmd(cx *mg.CmdCtx) {
 		pth string
 	}
 
-	mgc.ipbn.RLock()
-	ents := make([]ent, 0, len(mgc.ipbn.m))
-	for nm, pth := range mgc.ipbn.m {
+	kp := &mgc.knownPaths
+	kp.RLock()
+	ents := make([]ent, 0, len(kp.name))
+	for nm, pth := range kp.name {
 		ents = append(ents, ent{nm: nm, pth: pth})
 	}
-	mgc.ipbn.RUnlock()
+	kp.RUnlock()
 
 	buf := &bytes.Buffer{}
 	tbw := tabwriter.NewWriter(cx.Output, 1, 4, 1, ' ', 0)
