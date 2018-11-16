@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"bytes"
 	"go/ast"
 	"go/token"
 	"margo.sh/mg"
@@ -15,11 +16,11 @@ const (
 	BlockScope
 	CommentScope
 	ConstScope
-	DeclScope
 	DeferScope
 	DocScope
 	ExprScope
 	FileScope
+	FuncDeclScope
 	IdentScope
 	ImportPathScope
 	ImportScope
@@ -27,7 +28,7 @@ const (
 	ReturnScope
 	SelectorScope
 	StringScope
-	TypeScope
+	TypeDeclScope
 	VarScope
 	cursorScopesEnd
 )
@@ -38,11 +39,11 @@ var (
 		BlockScope:      "BlockScope",
 		CommentScope:    "CommentScope",
 		ConstScope:      "ConstScope",
-		DeclScope:       "DeclScope",
 		DeferScope:      "DeferScope",
 		DocScope:        "DocScope",
 		ExprScope:       "ExprScope",
 		FileScope:       "FileScope",
+		FuncDeclScope:   "FuncDeclScope",
 		IdentScope:      "IdentScope",
 		ImportPathScope: "ImportPathScope",
 		ImportScope:     "ImportScope",
@@ -50,7 +51,7 @@ var (
 		ReturnScope:     "ReturnScope",
 		SelectorScope:   "SelectorScope",
 		StringScope:     "StringScope",
-		TypeScope:       "TypeScope",
+		TypeDeclScope:   "TypeDeclScope",
 		VarScope:        "VarScope",
 	}
 
@@ -114,6 +115,7 @@ type CursorCtx struct {
 	Scope      CursorScope
 	PkgName    string
 	IsTestFile bool
+	Line       []byte
 }
 
 func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
@@ -137,9 +139,12 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		}
 	}
 
+	ll := mgutil.RepositionLeft(src, pos, func(r rune) bool { return r != '\n' })
+	lr := mgutil.RepositionRight(src, pos, func(r rune) bool { return r != '\n' })
 	cx := &CursorCtx{
 		Ctx:  mx,
 		View: mx.View,
+		Line: bytes.TrimSpace(src[ll:lr]),
 	}
 	cx.init(mx.Store, src, pos)
 
@@ -202,8 +207,6 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 			cx.Scope |= ConstScope
 		case token.VAR:
 			cx.Scope |= VarScope
-		case token.TYPE:
-			cx.Scope |= TypeScope
 		}
 	}
 
@@ -211,6 +214,19 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		cx.Scope |= StringScope
 		if cx.ImportSpec != nil {
 			cx.Scope |= ImportPathScope
+		}
+	}
+
+	// we want to allow `kw`, `kw name`, `kw (\n|\n)`
+	punct := func(r rune) bool { return r != ' ' && r != '\t' && !IsLetter(r) }
+	if cx.Scope == 0 && bytes.IndexFunc(cx.Line, punct) < 0 {
+		switch x := cx.Node.(type) {
+		case *ast.FuncType:
+			cx.Scope |= FuncDeclScope
+		case *ast.GenDecl:
+			if x.Tok == token.TYPE {
+				cx.Scope |= TypeDeclScope
+			}
 		}
 	}
 
