@@ -322,7 +322,7 @@ func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func MapSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(VarScope, BlockScope) {
+	if !cx.Scope.Is(ExprScope) {
 		return nil
 	}
 	return []mg.Completion{
