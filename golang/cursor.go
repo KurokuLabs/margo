@@ -212,15 +212,20 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		}
 	}
 
-	if cx.Scope.Is(
+	exprOk := cx.Scope.Is(
 		AssignmentScope,
+		BlockScope,
 		ConstScope,
 		DeferScope,
-		IdentScope,
 		ReturnScope,
-		SelectorScope,
 		VarScope,
-	) {
+	) && !cx.Scope.Is(
+		SelectorScope,
+	)
+	if asn := (*ast.AssignStmt)(nil); exprOk && cx.Set(&asn) {
+		exprOk = pos >= cx.TokenFile.Offset(asn.TokPos)+len(asn.Tok.String())
+	}
+	if exprOk {
 		cx.Scope |= ExprScope
 	}
 
