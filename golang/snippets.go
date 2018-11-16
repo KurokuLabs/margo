@@ -18,6 +18,7 @@ var (
 		MapSnippet,
 		TypeSnippet,
 		AppendSnippet,
+		DocSnippet,
 	)
 
 	pkgDirNamePat = regexp.MustCompile(`(\w+)\W*$`)
@@ -413,4 +414,46 @@ func AppendSnippet(cx *CompletionCtx) []mg.Completion {
 			Src:   `append(${1:` + id.Name + `}, ${2})$0`,
 		},
 	}
+}
+
+func DocSnippet(cx *CompletionCtx) []mg.Completion {
+	if cx.Doc == nil {
+		return nil
+	}
+
+	var ids []*ast.Ident
+	switch x := cx.Doc.Node.(type) {
+	case *ast.File:
+		ids = append(ids, x.Name)
+	case *ast.Field:
+		ids = append(ids, x.Names...)
+	case *ast.TypeSpec:
+		ids = append(ids, x.Name)
+	case *ast.FuncDecl:
+		addNames := func(fl *ast.FieldList) {
+			if fl == nil {
+				return
+			}
+			for _, f := range fl.List {
+				ids = append(ids, f.Names...)
+			}
+		}
+		ids = append(ids, x.Name)
+		addNames(x.Recv)
+		if t := x.Type; t != nil {
+			addNames(t.Params)
+			addNames(t.Results)
+		}
+	case *ast.ValueSpec:
+		ids = append(ids, x.Names...)
+	}
+
+	cl := make([]mg.Completion, len(ids))
+	for i, id := range ids {
+		cl[i] = mg.Completion{
+			Query: id.Name,
+			Src:   id.Name + ` $0`,
+		}
+	}
+	return cl
 }
