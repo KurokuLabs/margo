@@ -57,7 +57,7 @@ func (sf *SnippetFuncsList) fixCompletion(c *mg.Completion) {
 }
 
 func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.PkgName != NilPkgName || !cx.Scope.Is(PackageScope) {
+	if cx.PkgName != NilPkgName || cx.Scope != PackageScope {
 		return nil
 	}
 
@@ -91,7 +91,7 @@ func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) || cx.PkgName != "main" {
+	if cx.Scope != FileScope || cx.PkgName != "main" {
 		return nil
 	}
 
@@ -114,7 +114,7 @@ func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
+	if cx.Scope != FileScope {
 		return nil
 	}
 
@@ -137,7 +137,7 @@ func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope.Is(FileScope) {
+	if cx.Scope == FileScope {
 		comp := mg.Completion{
 			Query: `func`,
 			Title: `name() {...}`,
@@ -209,7 +209,7 @@ func receiverName(typeName string) string {
 }
 
 func MethodSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
+	if cx.Scope != FileScope {
 		return nil
 	}
 
@@ -287,7 +287,7 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
+	if cx.Scope != FileScope {
 		return nil
 	}
 	return []mg.Completion{
@@ -340,7 +340,7 @@ func MapSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func TypeSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope, BlockScope) {
+	if cs := cx.Scope; cs != FileScope && cs != BlockScope {
 		return nil
 	}
 	return []mg.Completion{

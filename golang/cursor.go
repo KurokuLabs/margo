@@ -67,7 +67,7 @@ func (cs CursorScope) String() string {
 	}
 	l := []string{}
 	for scope, name := range cursorScopeNames {
-		if cs.Any(scope) {
+		if cs.Is(scope) {
 			l = append(l, name)
 		}
 	}
@@ -77,29 +77,11 @@ func (cs CursorScope) String() string {
 
 func (cs CursorScope) Is(scopes ...CursorScope) bool {
 	for _, s := range scopes {
-		if s == cs {
+		if s&cs != 0 {
 			return true
 		}
 	}
 	return false
-}
-
-func (cs CursorScope) Any(scopes ...CursorScope) bool {
-	for _, s := range scopes {
-		if cs&s != 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func (cs CursorScope) All(scopes ...CursorScope) bool {
-	for _, s := range scopes {
-		if cs&s == 0 {
-			return false
-		}
-	}
-	return true
 }
 
 type DocNode struct {
