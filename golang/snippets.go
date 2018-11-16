@@ -340,7 +340,7 @@ func MapSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func TypeSnippet(cx *CompletionCtx) []mg.Completion {
-	if cs := cx.Scope; cs != FileScope && cs != BlockScope {
+	if cs := cx.Scope; cs != FileScope && cs != BlockScope && !cs.Is(TypeDeclScope) {
 		return nil
 	}
 	return []mg.Completion{
