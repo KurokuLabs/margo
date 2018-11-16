@@ -5,7 +5,6 @@ import (
 	"margo.sh/mg"
 	"regexp"
 	"unicode"
-	"unicode/utf8"
 )
 
 var (
@@ -18,6 +17,8 @@ var (
 		GenDeclSnippet,
 		MapSnippet,
 		TypeSnippet,
+		AppendSnippet,
+		DocSnippet,
 	)
 
 	pkgDirNamePat = regexp.MustCompile(`(\w+)\W*$`)
@@ -39,25 +40,7 @@ func (sf *SnippetFuncsList) RCond(mx *mg.Ctx) bool {
 }
 
 func (sf *SnippetFuncsList) Reduce(mx *mg.Ctx) *mg.State {
-	src, _ := mx.View.ReadAll()
-	pos := mx.View.Pos
-	if pos < 0 || pos > len(src) {
-		return mx.State
-	}
-
-	// TODO: is this correct?
-	for {
-		r, n := utf8.DecodeLastRune(src[:pos])
-		if !IsLetter(r) {
-			break
-		}
-		pos -= n
-	}
-	cx := NewCompletionCtx(mx, src, pos)
-	if cx.Scope.Any(StringScope, ImportPathScope, CommentScope) {
-		return mx.State
-	}
-
+	cx := NewViewCursorCtx(mx)
 	var cl []mg.Completion
 	for _, f := range sf.Funcs {
 		cl = append(cl, f(cx)...)
@@ -76,7 +59,7 @@ func (sf *SnippetFuncsList) fixCompletion(c *mg.Completion) {
 }
 
 func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.PkgName != NilPkgName || !cx.Scope.Is(PackageScope) {
+	if cx.PkgName != NilPkgName || cx.Scope != PackageScope {
 		return nil
 	}
 
@@ -110,7 +93,7 @@ func PackageNameSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) || cx.PkgName != "main" {
+	if cx.Scope != FileScope || cx.PkgName != "main" {
 		return nil
 	}
 
@@ -133,7 +116,7 @@ func MainFuncSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
+	if cx.Scope != FileScope {
 		return nil
 	}
 
@@ -156,7 +139,7 @@ func InitFuncSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func FuncSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope.Is(FileScope) {
+	if cx.Scope == FileScope || cx.Scope.Is(FuncDeclScope) {
 		comp := mg.Completion{
 			Query: `func`,
 			Title: `name() {...}`,
@@ -202,7 +185,7 @@ func FuncSnippet(cx *CompletionCtx) []mg.Completion {
 		}
 	}
 
-	if cx.Scope.Any(BlockScope, VarScope) {
+	if cx.Scope.Is(BlockScope, VarScope) {
 		return []mg.Completion{{
 			Query: `func`,
 			Title: `func() {...}`,
@@ -228,7 +211,7 @@ func receiverName(typeName string) string {
 }
 
 func MethodSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.IsTestFile || !cx.Scope.Is(FileScope) {
+	if cx.Scope != FileScope && !cx.Scope.Is(FuncDeclScope) {
 		return nil
 	}
 
@@ -306,42 +289,62 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Is(FileScope) {
-		return nil
-	}
-	return []mg.Completion{
-		{
-			Query: `import`,
-			Title: `(...)`,
-			Src: `
+	switch cx.Scope {
+	case BlockScope:
+		return []mg.Completion{
+			{
+				Query: `var`,
+				Title: `X`,
+				Src:   `var ${1:name}`,
+			},
+			{
+				Query: `var`,
+				Title: `X = Y`,
+				Src:   `var ${1:name} = ${2:value}`,
+			},
+			{
+				Query: `const`,
+				Title: `X = Y`,
+				Src:   `const ${1:name} = ${2:value}`,
+			},
+		}
+	case FileScope:
+		return []mg.Completion{
+			{
+				Query: `import`,
+				Title: `(...)`,
+				Src: `
 				import (
 					"$0"
 				)
 			`,
-		},
-		{
-			Query: `var`,
-			Title: `(...)`,
-			Src: `
+			},
+			{
+				Query: `var`,
+				Title: `(...)`,
+				Src: `
 				var (
 					${1:name} = ${2:value}
 				)
 			`,
-		},
-		{
-			Query: `const`,
-			Title: `(...)`,
-			Src: `
+			},
+			{
+				Query: `const`,
+				Title: `(...)`,
+				Src: `
 				const (
 					${1:name} = ${2:value}
 				)
 			`,
-		},
+			},
+		}
+	default:
+		return nil
 	}
 }
 
 func MapSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Any(VarScope, BlockScope) {
+	if !cx.Scope.Is(ExprScope) {
 		return nil
 	}
 	return []mg.Completion{
@@ -359,7 +362,7 @@ func MapSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func TypeSnippet(cx *CompletionCtx) []mg.Completion {
-	if !cx.Scope.Any(FileScope, BlockScope) {
+	if cs := cx.Scope; cs != FileScope && cs != BlockScope && !cs.Is(TypeDeclScope) {
 		return nil
 	}
 	return []mg.Completion{
@@ -378,4 +381,79 @@ func TypeSnippet(cx *CompletionCtx) []mg.Completion {
 			Src:   `type ${1:T} ${2:V}`,
 		},
 	}
+}
+
+func AppendSnippet(cx *CompletionCtx) []mg.Completion {
+	if !cx.Scope.Is(ExprScope) {
+		return nil
+	}
+
+	if !cx.Scope.Is(AssignmentScope) {
+		return []mg.Completion{
+			mg.Completion{
+				Query: `append`,
+				Title: `append(S, E)`,
+				Src:   `append(${1}, ${2})$0`,
+			},
+		}
+	}
+
+	var asn *ast.AssignStmt
+	if !cx.Set(&asn) || len(asn.Lhs) != 1 || len(asn.Rhs) > 1 {
+		return nil
+	}
+	id, _ := asn.Lhs[0].(*ast.Ident)
+	if id == nil {
+		return nil
+	}
+
+	return []mg.Completion{
+		mg.Completion{
+			Query: `append`,
+			Title: `append(` + id.Name + `, E)`,
+			Src:   `append(${1:` + id.Name + `}, ${2})$0`,
+		},
+	}
+}
+
+func DocSnippet(cx *CompletionCtx) []mg.Completion {
+	if cx.Doc == nil {
+		return nil
+	}
+
+	var ids []*ast.Ident
+	switch x := cx.Doc.Node.(type) {
+	case *ast.File:
+		ids = append(ids, x.Name)
+	case *ast.Field:
+		ids = append(ids, x.Names...)
+	case *ast.TypeSpec:
+		ids = append(ids, x.Name)
+	case *ast.FuncDecl:
+		addNames := func(fl *ast.FieldList) {
+			if fl == nil {
+				return
+			}
+			for _, f := range fl.List {
+				ids = append(ids, f.Names...)
+			}
+		}
+		ids = append(ids, x.Name)
+		addNames(x.Recv)
+		if t := x.Type; t != nil {
+			addNames(t.Params)
+			addNames(t.Results)
+		}
+	case *ast.ValueSpec:
+		ids = append(ids, x.Names...)
+	}
+
+	cl := make([]mg.Completion, len(ids))
+	for i, id := range ids {
+		cl[i] = mg.Completion{
+			Query: id.Name,
+			Src:   id.Name + ` $0`,
+		}
+	}
+	return cl
 }

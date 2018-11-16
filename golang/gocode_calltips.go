@@ -88,9 +88,10 @@ func (gc *GocodeCalltips) processStatus(act gocodeCtAct) string {
 		return ""
 	}
 
-	cn := ParseCursorNode(nil, src, srcPos)
-	tokPos := cn.TokenFile.Pos(srcPos)
-	call, assign := gc.findCallExpr(cn.Nodes, tokPos)
+	cx := NewCursorCtx(mx, src, srcPos)
+	tf := cx.TokenFile
+	tokPos := tf.Pos(srcPos)
+	call, assign := gc.findCallExpr(cx.Nodes, tokPos)
 	if call == nil {
 		return ""
 	}
@@ -101,7 +102,7 @@ func (gc *GocodeCalltips) processStatus(act gocodeCtAct) string {
 	}
 
 	fxName := ident.String()
-	candidate, ok := gc.candidate(mx, src, cn.TokenFile.Position(ident.End()).Offset, fxName)
+	candidate, ok := gc.candidate(mx, src, tf.Position(ident.End()).Offset, fxName)
 	if !ok {
 		return ""
 	}
@@ -115,10 +116,10 @@ func (gc *GocodeCalltips) processStatus(act gocodeCtAct) string {
 	var highlight ast.Node
 	switch {
 	case call.Lparen < tokPos && tokPos <= call.Rparen:
-		i := gc.selectedFieldExpr(cn.TokenFile.Offset, src, srcPos, call.Args)
+		i := gc.selectedFieldExpr(tf.Offset, src, srcPos, call.Args)
 		highlight = gc.selectedFieldName(fx.Params, i)
 	case assign != nil:
-		i := gc.selectedFieldExpr(cn.TokenFile.Offset, src, srcPos, assign.Lhs)
+		i := gc.selectedFieldExpr(tf.Offset, src, srcPos, assign.Lhs)
 		highlight = gc.selectedFieldName(fx.Results, i)
 	}
 

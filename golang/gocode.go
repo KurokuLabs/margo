@@ -355,9 +355,9 @@ func (g Gocode) matchTests(c suggest.Candidate) bool {
 
 type gocodeCtx struct {
 	Gocode
+	*CursorCtx
 	gsu  *gcSuggest
 	mx   *mg.Ctx
-	cn   *CursorNode
 	fn   string
 	src  []byte
 	pos  int
@@ -373,20 +373,28 @@ func initGocodeReducer(mx *mg.Ctx, g Gocode) *gocodeCtx {
 	}
 
 	cx := NewCursorCtx(mx, src, pos)
-	if cx.Scope.Any(PackageScope, FileScope, ImportScope, StringScope, CommentScope) {
+	if cx.Scope.Is(
+		PackageScope,
+		FileScope,
+		ImportScope,
+		StringScope,
+		CommentScope,
+		FuncDeclScope,
+		TypeDeclScope,
+	) {
 		return nil
 	}
 
 	gsu := mctl.newGcSuggest(mx)
 	gsu.suggestDebug = g.Debug
 	return &gocodeCtx{
-		mx:   mx,
-		gsu:  gsu,
-		cn:   cx.CursorNode,
-		fn:   mx.View.Filename(),
-		pos:  pos,
-		src:  src,
-		bctx: BuildContext(mx),
+		mx:        mx,
+		CursorCtx: cx,
+		gsu:       gsu,
+		fn:        mx.View.Filename(),
+		pos:       pos,
+		src:       src,
+		bctx:      BuildContext(mx),
 	}
 }
 
