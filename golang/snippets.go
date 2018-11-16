@@ -287,37 +287,57 @@ func MethodSnippet(cx *CompletionCtx) []mg.Completion {
 }
 
 func GenDeclSnippet(cx *CompletionCtx) []mg.Completion {
-	if cx.Scope != FileScope {
-		return nil
-	}
-	return []mg.Completion{
-		{
-			Query: `import`,
-			Title: `(...)`,
-			Src: `
+	switch cx.Scope {
+	case BlockScope:
+		return []mg.Completion{
+			{
+				Query: `var`,
+				Title: `X`,
+				Src:   `var ${1:name}`,
+			},
+			{
+				Query: `var`,
+				Title: `X = Y`,
+				Src:   `var ${1:name} = ${2:value}`,
+			},
+			{
+				Query: `const`,
+				Title: `X = Y`,
+				Src:   `const ${1:name} = ${2:value}`,
+			},
+		}
+	case FileScope:
+		return []mg.Completion{
+			{
+				Query: `import`,
+				Title: `(...)`,
+				Src: `
 				import (
 					"$0"
 				)
 			`,
-		},
-		{
-			Query: `var`,
-			Title: `(...)`,
-			Src: `
+			},
+			{
+				Query: `var`,
+				Title: `(...)`,
+				Src: `
 				var (
 					${1:name} = ${2:value}
 				)
 			`,
-		},
-		{
-			Query: `const`,
-			Title: `(...)`,
-			Src: `
+			},
+			{
+				Query: `const`,
+				Title: `(...)`,
+				Src: `
 				const (
 					${1:name} = ${2:value}
 				)
 			`,
-		},
+			},
+		}
+	default:
+		return nil
 	}
 }
 
