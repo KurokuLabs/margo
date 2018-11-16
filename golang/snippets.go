@@ -17,6 +17,7 @@ var (
 		GenDeclSnippet,
 		MapSnippet,
 		TypeSnippet,
+		AppendSnippet,
 	)
 
 	pkgDirNamePat = regexp.MustCompile(`(\w+)\W*$`)
@@ -377,6 +378,39 @@ func TypeSnippet(cx *CompletionCtx) []mg.Completion {
 			Query: `type`,
 			Title: `type T`,
 			Src:   `type ${1:T} ${2:V}`,
+		},
+	}
+}
+
+func AppendSnippet(cx *CompletionCtx) []mg.Completion {
+	if !cx.Scope.Is(ExprScope) {
+		return nil
+	}
+
+	if !cx.Scope.Is(AssignmentScope) {
+		return []mg.Completion{
+			mg.Completion{
+				Query: `append`,
+				Title: `append(S, E)`,
+				Src:   `append(${1}, ${2})$0`,
+			},
+		}
+	}
+
+	var asn *ast.AssignStmt
+	if !cx.Set(&asn) || len(asn.Lhs) != 1 || len(asn.Rhs) > 1 {
+		return nil
+	}
+	id, _ := asn.Lhs[0].(*ast.Ident)
+	if id == nil {
+		return nil
+	}
+
+	return []mg.Completion{
+		mg.Completion{
+			Query: `append`,
+			Title: `append(` + id.Name + `, E)`,
+			Src:   `append(${1:` + id.Name + `}, ${2})$0`,
 		},
 	}
 }
