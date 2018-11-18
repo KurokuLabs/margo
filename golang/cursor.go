@@ -221,6 +221,8 @@ func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
 		VarScope,
 	) && !cx.Scope.Is(
 		SelectorScope,
+		StringScope,
+		CommentScope,
 	)
 	if asn := (*ast.AssignStmt)(nil); exprOk && cx.Set(&asn) {
 		exprOk = pos >= cx.TokenFile.Offset(asn.TokPos)+len(asn.Tok.String())
