@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"margo.sh/mg"
 	"regexp"
+	"sort"
+	"strings"
 	"unicode"
 )
 
@@ -19,6 +21,7 @@ var (
 		TypeSnippet,
 		AppendSnippet,
 		DocSnippet,
+		ImportPathSnippet,
 	)
 
 	pkgDirNamePat = regexp.MustCompile(`(\w+)\W*$`)
@@ -455,5 +458,56 @@ func DocSnippet(cx *CompletionCtx) []mg.Completion {
 			Src:   id.Name + ` $0`,
 		}
 	}
+	return cl
+}
+
+func ImportPathSnippet(cx *CompletionCtx) []mg.Completion {
+	lit, ok := cx.Node.(*ast.BasicLit)
+	if !ok || !cx.Scope.Is(ImportPathScope) {
+		return nil
+	}
+
+	pfx := unquote(lit.Value)
+	if i := strings.LastIndexByte(pfx, '/'); i >= 0 {
+		pfx = pfx[:i+1]
+	} else {
+		// if there's no slash, don't do any filtering
+		// this allows the fuzzy selection to work in editor
+		pfx = ""
+	}
+
+	pkl := mctl.plst.View().List
+	skip := map[string]bool{}
+	srcDir := cx.View.Dir()
+	for _, spec := range cx.AstFile.Imports {
+		skip[unquote(spec.Path.Value)] = true
+	}
+
+	cl := make([]mg.Completion, 0, len(pkl))
+	for _, p := range pkl {
+		if skip[p.ImportPath] || !p.Importable(srcDir) {
+			continue
+		}
+
+		src := p.ImportPath
+		if pfx != "" {
+			src = strings.TrimPrefix(p.ImportPath, pfx)
+			if src == p.ImportPath || src == "" {
+				continue
+			}
+
+			// BUG: in ST
+			// given candidate `margo.sh/xxx`, and prefix `margo.sh`
+			// if we return xxx, it will replace the whole path
+			if !strings.ContainsRune(src, '/') {
+				src = p.ImportPath
+			}
+		}
+		cl = append(cl, mg.Completion{
+			Query: p.ImportPath,
+			Src:   src,
+		})
+	}
+	sort.Slice(cl, func(i, j int) bool { return cl[i].Query < cl[j].Query })
 	return cl
 }
