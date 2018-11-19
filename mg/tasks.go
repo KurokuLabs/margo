@@ -16,17 +16,15 @@ type Task struct {
 	Cancel   func()
 	CancelID string
 	ShowNow  bool
+	NoEcho   bool
 }
 
 type TaskTicket struct {
-	ID       string
-	Title    string
-	Start    time.Time
-	CancelID string
+	Task
+	ID    string
+	Start time.Time
 
 	tracker *taskTracker
-	showNow bool
-	cancel  func()
 }
 
 func (ti *TaskTicket) Done() {
@@ -36,13 +34,13 @@ func (ti *TaskTicket) Done() {
 }
 
 func (ti *TaskTicket) Cancel() {
-	if ti.cancel != nil {
-		ti.cancel()
+	if f := ti.Task.Cancel; f != nil {
+		f()
 	}
 }
 
 func (ti *TaskTicket) Cancellable() bool {
-	return ti.cancel != nil
+	return ti.Task.Cancel != nil
 }
 
 type taskTracker struct {
@@ -201,8 +199,10 @@ func (tr *taskTracker) status() string {
 	title := ""
 	for _, t := range tr.tickets {
 		age := now.Sub(t.Start) / time.Second
+		echo := !t.NoEcho && title == "" && t.Title != ""
 		switch age {
 		case 0:
+			echo = echo && t.ShowNow
 		case 1:
 			tr.buf.WriteString(" ◔")
 		case 2:
@@ -210,9 +210,10 @@ func (tr *taskTracker) status() string {
 		case 3:
 			tr.buf.WriteString(" ◕")
 		default:
+			echo = false
 			tr.buf.WriteString(" ●")
 		}
-		if title == "" && t.Title != "" && (age >= 1 || t.showNow) && age <= 3 {
+		if echo {
 			title = t.Title
 		}
 	}
@@ -282,13 +283,10 @@ func (tr *taskTracker) Begin(o Task) *TaskTicket {
 
 	tr.id++
 	t := &TaskTicket{
-		ID:       fmt.Sprintf("@%d", tr.id),
-		CancelID: o.CancelID,
-		Title:    o.Title,
-		Start:    time.Now(),
-		cancel:   o.Cancel,
-		tracker:  tr,
-		showNow:  o.ShowNow,
+		Task:    o,
+		ID:      fmt.Sprintf("@%d", tr.id),
+		Start:   time.Now(),
+		tracker: tr,
 	}
 	tr.tickets = append(tr.tickets, t)
 	return t
