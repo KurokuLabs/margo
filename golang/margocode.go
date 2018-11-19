@@ -273,8 +273,12 @@ func (mgc *marGocodeCtl) initPlst(mx *mg.Ctx) {
 	bctx := BuildContext(mx)
 	roots := mg.StrSet{bctx.GOROOT}.Add(PathList(bctx.GOPATH)...)
 	for _, dir := range roots {
-		tsk := mx.Begin(mg.Task{Title: "Scanning Package List: " + dir})
-		out, _ := mgc.plst.Scan(mx, filepath.Join(dir, "src"))
+		dir = filepath.Join(dir, "src")
+		tsk := mx.Begin(mg.Task{
+			Title:  "Scanning Package List: " + dir,
+			NoEcho: true,
+		})
+		out, _ := mgc.plst.Scan(mx, dir)
 		mx.Log.Printf("\n%s", out)
 		tsk.Done()
 	}
