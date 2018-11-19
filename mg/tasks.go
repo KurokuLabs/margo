@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-type taskTick struct{ ActionType }
-
 type Task struct {
 	Title    string
 	Cancel   func()
@@ -45,24 +43,16 @@ func (ti *TaskTicket) Cancellable() bool {
 
 type taskTracker struct {
 	ReducerType
-	mu      sync.Mutex
-	id      uint64
-	tickets []*TaskTicket
-	timer   *time.Timer
-	buf     bytes.Buffer
+	mu       sync.Mutex
+	id       uint64
+	tickets  []*TaskTicket
+	buf      bytes.Buffer
+	dispatch Dispatcher
+	status   string
 }
 
-func (tr *taskTracker) RMount(mx *Ctx) {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-
-	tr.timer = time.NewTimer(1 * time.Second)
-	dispatch := mx.Store.Dispatch
-	go func() {
-		for range tr.timer.C {
-			dispatch(taskTick{})
-		}
-	}()
+func (tr *taskTracker) RInit(mx *Ctx) {
+	tr.dispatch = mx.Store.Dispatch
 }
 
 func (tr *taskTracker) RUnmount(*Ctx) {
@@ -84,18 +74,28 @@ func (tr *taskTracker) Reduce(mx *Ctx) *State {
 		st = tr.runCmd(st)
 	case QueryUserCmds:
 		st = tr.userCmds(st)
-	case taskTick:
-		tr.tick()
 	}
-	if s := tr.status(); s != "" {
-		st = st.AddStatus(s)
+	if tr.status != "" {
+		st = st.AddStatus(tr.status)
 	}
 	return st
 }
 
 func (tr *taskTracker) tick() {
-	if len(tr.tickets) != 0 {
-		tr.resetTimer()
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	status, resched := tr.render()
+	if status != tr.status {
+		tr.status = status
+		if disp := tr.dispatch; disp != nil {
+			disp(Render)
+		} else {
+			resched++
+		}
+	}
+	if resched > 0 {
+		time.AfterFunc(1*time.Second, tr.tick)
 	}
 }
 
@@ -191,73 +191,48 @@ func (tr *taskTracker) listAll(cx *CmdCtx) {
 	cx.Output.Write(buf.Bytes())
 }
 
-func (tr *taskTracker) status() string {
+func (tr *taskTracker) render() (status string, fresh int) {
+	if len(tr.tickets) == 0 {
+		return "", 0
+	}
+
 	tr.buf.Reset()
 	now := time.Now()
 	tr.buf.WriteString("Tasks")
 	initLen := tr.buf.Len()
 	title := ""
+	freshFrames := []string{"", " ◔", " ◑", " ◕"}
+	staleFrame := " ●"
 	for _, t := range tr.tickets {
-		age := now.Sub(t.Start) / time.Second
-		echo := !t.NoEcho && title == "" && t.Title != ""
-		switch age {
-		case 0:
-			echo = echo && t.ShowNow
-		case 1:
-			tr.buf.WriteString(" ◔")
-		case 2:
-			tr.buf.WriteString(" ◑")
-		case 3:
-			tr.buf.WriteString(" ◕")
-		default:
-			echo = false
-			tr.buf.WriteString(" ●")
+		age := int(now.Sub(t.Start) / time.Second)
+		if age == 0 && t.ShowNow {
+			age = 1
 		}
-		if echo {
-			title = t.Title
+		if age < len(freshFrames) {
+			fresh++
+			if !t.NoEcho && title == "" && t.Title != "" {
+				title = t.Title
+			}
+			tr.buf.WriteString(freshFrames[age])
+		} else {
+			tr.buf.WriteString(staleFrame)
 		}
 	}
 	if tr.buf.Len() == initLen && title == "" {
-		return ""
+		return "", fresh
 	}
 	if title != "" {
 		tr.buf.WriteByte(' ')
 		tr.buf.WriteString(title)
 	}
-	return tr.buf.String()
-}
-
-func (tr *taskTracker) titles() (stale []string, fresh []string) {
-	now := time.Now()
-	for _, t := range tr.tickets {
-		dur := now.Sub(t.Start)
-		switch {
-		case dur >= 5*time.Second:
-			stale = append(stale, t.Title)
-		case dur >= 1*time.Second:
-			fresh = append(fresh, t.Title)
-		}
-	}
-	for _, t := range tr.tickets {
-		dur := now.Sub(t.Start)
-		switch {
-		case dur >= 5*time.Second:
-			stale = append(stale, t.Title)
-		case dur >= 1*time.Second:
-			fresh = append(fresh, t.Title)
-		}
-	}
-	return stale, fresh
-}
-
-func (tr *taskTracker) resetTimer() {
-	defer tr.timer.Reset(1 * time.Second)
+	return tr.buf.String(), fresh
 }
 
 func (tr *taskTracker) done(id string) {
+	defer tr.tick()
+
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	defer tr.resetTimer()
 
 	l := make([]*TaskTicket, 0, len(tr.tickets)-1)
 	for _, t := range tr.tickets {
@@ -269,9 +244,10 @@ func (tr *taskTracker) done(id string) {
 }
 
 func (tr *taskTracker) Begin(o Task) *TaskTicket {
+	defer tr.tick()
+
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	defer tr.resetTimer()
 
 	if cid := o.CancelID; cid != "" {
 		for _, t := range tr.tickets {
