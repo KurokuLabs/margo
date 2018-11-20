@@ -15,6 +15,11 @@ import (
 	"unicode"
 )
 
+const (
+	calltipOpenTag  = "⎨"
+	calltipCloseTag = "⎬"
+)
+
 type gocodeCtAct struct {
 	mg.ActionType
 	mx     *mg.Ctx
@@ -33,6 +38,7 @@ type GocodeCalltips struct {
 
 	q      *mgutil.ChanQ
 	status string
+	hud    string
 }
 
 func (gc *GocodeCalltips) RCond(mx *mg.Ctx) bool {
@@ -59,10 +65,17 @@ func (gc *GocodeCalltips) Reduce(mx *mg.Ctx) *mg.State {
 		gc.q.Put(gocodeCtAct{mx: mx, status: gc.status})
 	case gocodeCtAct:
 		gc.status = act.status
+		gc.hud = strings.NewReplacer(
+			calltipOpenTag, `<strong class="highlight">`,
+			calltipCloseTag, `</strong>`,
+		).Replace(gc.status)
 	}
 
 	if gc.status != "" {
-		return st.AddStatus(gc.status)
+		st = st.AddStatus(gc.status)
+	}
+	if gc.hud != "" {
+		st = st.AddHUD("Calltips", gc.hud)
 	}
 	return st
 }
@@ -294,8 +307,8 @@ func (p fieldPrinter) print() {
 
 	hlId, _ := p.highlight.(*ast.Ident)
 	hlField, _ := p.highlight.(*ast.Field)
-	hlWriteOpen := func() { p.output.Write([]byte("⎨")) }
-	hlWriteClose := func() { p.output.Write([]byte("⎬")) }
+	hlWriteOpen := func() { p.output.Write([]byte(calltipOpenTag)) }
+	hlWriteClose := func() { p.output.Write([]byte(calltipCloseTag)) }
 
 	for i, f := range p.fields {
 		if i > 0 {

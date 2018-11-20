@@ -299,7 +299,7 @@ func (_ issueStatusSupport) Reduce(mx *Ctx) *State {
 	if msg != "" {
 		status = append(status, msg)
 	}
-	return mx.AddStatus(status...)
+	return mx.AddStatus(status...).AddHUD("Issues", status...)
 }
 
 type IssueOut struct {
