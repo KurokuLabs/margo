@@ -209,8 +209,6 @@ func (cc *Cache) goList(mx *mg.Ctx, dir string) (_ []*Pkg, output []byte, _ erro
 	cmd.Stdout = outBuf
 	cmd.Stderr = errBuf
 
-	fmt.Fprintf(errBuf, "``` scan: %s ```\n", dir)
-
 	err := cmd.Run()
 	cmdDur := mgpf.D(time.Since(start))
 
