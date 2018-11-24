@@ -105,8 +105,16 @@ func NewCompletionCtx(mx *mg.Ctx, src []byte, pos int) *CompletionCtx {
 }
 
 func NewViewCursorCtx(mx *mg.Ctx) *CursorCtx {
-	src, pos := mx.View.SrcPos()
-	return NewCursorCtx(mx, src, pos)
+	type Key struct{ *mg.View }
+	k := Key{mx.View}
+	if cx, ok := mx.Store.Get(k).(*CursorCtx); ok {
+		return cx
+	}
+
+	src, pos := k.SrcPos()
+	cx := NewCursorCtx(mx, src, pos)
+	mx.Store.Put(k, cx)
+	return cx
 }
 
 func NewCursorCtx(mx *mg.Ctx, src []byte, pos int) *CursorCtx {
