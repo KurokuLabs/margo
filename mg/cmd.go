@@ -220,6 +220,7 @@ func runCmd(mx *Ctx, rc RunCmd) *State {
 		RunCmd: rc,
 		Output: &CmdOut{Fd: rc.Fd, Dispatch: mx.Store.Dispatch},
 	}
+	defer mx.Profile.Push(cx.Name).Pop()
 	return cx.Run()
 }
 
