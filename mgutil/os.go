@@ -74,10 +74,22 @@ func (e EnvMap) Environ() []string {
 	return l
 }
 
-// Get returns the returns the value for k or def if it doesn't exist
-// If def is an empty string, it's the equivalent of e[k]
+// Get returns the value for k if it exists in the map.
+// If it doesn't exists or is an empty string, def is returned.
 func (e EnvMap) Get(k, def string) string {
 	if v := e[k]; v != "" {
+		return v
+	}
+	return def
+}
+
+// Getenv returns the value for k if it exists in the map or via os.Getenv.
+// If it doesn't exists or is an empty string, def is returned.
+func (e EnvMap) Getenv(k, def string) string {
+	if v := e[k]; v != "" {
+		return v
+	}
+	if v := os.Getenv(k); v != "" {
 		return v
 	}
 	return def
