@@ -3,6 +3,7 @@ package mg
 import (
 	"fmt"
 	"github.com/ugorji/go/codec"
+	"margo.sh/mg/actions"
 	"reflect"
 )
 
@@ -139,7 +140,7 @@ type State struct {
 	HUD HUDState
 
 	// clientActions is a list of client actions to dispatch in the editor
-	clientActions []clientActionType
+	clientActions []actions.ClientData
 }
 
 // ActionLabel returns a label for the actions act.
@@ -301,15 +302,15 @@ func (st *State) AddUserCmds(l ...UserCmd) *State {
 }
 
 // addClientActions adds the list of client actions in l to State.clientActions
-func (st *State) addClientActions(l ...clientAction) *State {
+func (st *State) addClientActions(l ...actions.ClientAction) *State {
 	if len(l) == 0 {
 		return st
 	}
 	return st.Copy(func(st *State) {
-		el := make([]clientActionType, 0, len(st.clientActions)+len(l))
+		el := make([]actions.ClientData, 0, len(st.clientActions)+len(l))
 		el = append(el, st.clientActions...)
 		for _, ca := range l {
-			el = append(el, ca.clientAction())
+			el = append(el, ca.ClientAction())
 		}
 		st.clientActions = el
 	})
