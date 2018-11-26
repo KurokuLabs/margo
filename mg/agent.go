@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/ugorji/go/codec"
 	"io"
-	"margo.sh/mg/actions"
 	"margo.sh/mgpf"
 	"margo.sh/mgutil"
 	"os"
@@ -76,9 +75,14 @@ type AgentConfig struct {
 	Stderr io.Writer
 }
 
+type agentReqAction struct {
+	Name string
+	Data codec.Raw
+}
+
 type agentReq struct {
 	Cookie  string
-	Actions []actions.ActionData
+	Actions []agentReqAction
 	Props   clientProps
 	Sent    string
 	Profile *mgpf.Profile
@@ -98,9 +102,6 @@ func (rq *agentReq) finalize(ag *Agent) {
 		rq.Profile.Sample("ipc|transport", time.Since(t))
 	}
 	rq.Props.finalize(ag)
-	for i, _ := range rq.Actions {
-		rq.Actions[i].Handle = ag.handle
-	}
 }
 
 type agentRes struct {
@@ -122,7 +123,7 @@ func (rs agentRes) finalize() interface{} {
 
 			State
 			Config        interface{}
-			ClientActions []actions.ClientData
+			ClientActions []clientActionType
 		}
 	}{}
 
@@ -216,11 +217,11 @@ func (ag *Agent) handleReq(rq *agentReq) {
 	}
 }
 
-func (ag *Agent) createAction(d actions.ActionData) (Action, error) {
-	if create := ActionCreators.Lookup(d.Name); create != nil {
-		return create(d)
+func (ag *Agent) createAction(ra agentReqAction, h codec.Handle) (Action, error) {
+	if f := actionCreators[ra.Name]; f != nil {
+		return f(h, ra)
 	}
-	return nil, fmt.Errorf("Unknown action: %s", d.Name)
+	return nil, fmt.Errorf("Unknown action: %s", ra.Name)
 }
 
 func (ag *Agent) sub(mx *Ctx) {
