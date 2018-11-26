@@ -48,8 +48,8 @@ var ciCmd = cli.Command{
 		}
 
 		scripts := [][]string{
-			testScript,
 			vetScript,
+			testScript,
 		}
 		for _, script := range scripts {
 			cmd := cmdrunner.Cmd{
