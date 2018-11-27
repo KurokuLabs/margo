@@ -31,7 +31,9 @@ type CurCtx struct {
 	PkgName    string
 	IsTestFile bool
 	Line       []byte
-	Pos        token.Pos
+	Src        []byte
+	Pos        int
+	TokenPos   token.Pos
 	AstFile    *ast.File
 	TokenFile  *token.File
 	Doc        *DocNode
@@ -99,10 +101,12 @@ func newCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 		Ctx:  mx,
 		View: mx.View,
 		Line: bytes.TrimSpace(src[ll:lr]),
+		Src:  src,
+		Pos:  pos,
 	}
 	cx.printer.fset = token.NewFileSet()
 	cx.printer.buf = &bytes.Buffer{}
-	cx.init(mx.Store, src, pos)
+	cx.init(mx.Store)
 
 	af := cx.AstFile
 	if af == nil {
@@ -135,7 +139,7 @@ func newCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 	case *ast.BlockStmt:
 		cx.Scope |= BlockScope
 	case *ast.CaseClause:
-		if goutil.NodeEnclosesPos(goutil.PosEnd{P: x.Colon, E: x.End()}, cx.Pos) {
+		if goutil.NodeEnclosesPos(goutil.PosEnd{P: x.Colon, E: x.End()}, cx.TokenPos) {
 			cx.Scope |= BlockScope
 		}
 	case *ast.Ident:
@@ -218,7 +222,7 @@ func (cx *CurCtx) FuncDeclName() (name string, isMethod bool) {
 	if !cx.Set(&fd) {
 		return "", false
 	}
-	if fd.Name == nil || !goutil.NodeEnclosesPos(fd.Name, cx.Pos) {
+	if fd.Name == nil || !goutil.NodeEnclosesPos(fd.Name, cx.TokenPos) {
 		return "", false
 	}
 	return fd.Name.Name, fd.Recv != nil
@@ -302,7 +306,8 @@ func (cx *CurCtx) append(n ast.Node) {
 	cx.Nodes = append(cx.Nodes, n)
 }
 
-func (cx *CurCtx) init(kvs mg.KVStore, src []byte, offset int) {
+func (cx *CurCtx) init(kvs mg.KVStore) {
+	src, pos := cx.Src, cx.Pos
 	astFileIsValid := func(af *ast.File) bool {
 		return af.Package.IsValid() &&
 			af.Name != nil &&
@@ -324,13 +329,13 @@ func (cx *CurCtx) init(kvs mg.KVStore, src []byte, offset int) {
 	af := pf.AstFile
 	cx.AstFile = af
 	cx.TokenFile = pf.TokenFile
-	cx.Pos = token.Pos(pf.TokenFile.Base() + offset)
+	cx.TokenPos = token.Pos(pf.TokenFile.Base() + pos)
 
 	cx.initDocNode(af)
-	if astFileIsValid(af) && cx.Pos > af.Name.End() {
+	if astFileIsValid(af) && cx.TokenPos > af.Name.End() {
 		cx.append(af)
 		ast.Inspect(af, func(n ast.Node) bool {
-			if goutil.NodeEnclosesPos(n, cx.Pos) {
+			if goutil.NodeEnclosesPos(n, cx.TokenPos) {
 				cx.append(n)
 			}
 			cx.initDocNode(n)
@@ -340,7 +345,7 @@ func (cx *CurCtx) init(kvs mg.KVStore, src []byte, offset int) {
 
 	for _, cg := range af.Comments {
 		for _, c := range cg.List {
-			if goutil.NodeEnclosesPos(c, cx.Pos) {
+			if goutil.NodeEnclosesPos(c, cx.TokenPos) {
 				cx.append(c)
 			}
 		}
@@ -374,7 +379,7 @@ func (cx *CurCtx) initDocNode(n ast.Node) {
 	}
 
 	setCg := func(cg *ast.CommentGroup) {
-		if cx.Doc != nil || cg == nil || !goutil.NodeEnclosesPos(cg, cx.Pos) {
+		if cx.Doc != nil || cg == nil || !goutil.NodeEnclosesPos(cg, cx.TokenPos) {
 			return
 		}
 		cx.Doc = &DocNode{
