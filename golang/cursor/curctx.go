@@ -187,6 +187,9 @@ func newCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 		StringScope,
 		CommentScope,
 	)
+	if x := (*ast.TypeAssertExpr)(nil); exprOk && cx.Set(&x) {
+		exprOk = false
+	}
 	if asn := (*ast.AssignStmt)(nil); exprOk && cx.Set(&asn) {
 		exprOk = pos >= cx.TokenFile.Offset(asn.TokPos)+len(asn.Tok.String())
 	}
