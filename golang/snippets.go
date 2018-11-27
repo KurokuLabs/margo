@@ -26,6 +26,7 @@ var (
 		AppendSnippet,
 		DocSnippet,
 		ImportPathSnippet,
+		DeferSnippet,
 	)
 
 	pkgDirNamePat = regexp.MustCompile(`(\w+)\W*$`)
@@ -551,4 +552,30 @@ func ImportPathSnippet(cx *CompletionCtx) []mg.Completion {
 	}
 	sort.Slice(cl, func(i, j int) bool { return cl[i].Query < cl[j].Query })
 	return cl
+}
+
+func DeferSnippet(cx *CompletionCtx) []mg.Completion {
+	if !cx.Scope.Is(BlockScope) {
+		return nil
+	}
+	return []mg.Completion{
+		mg.Completion{
+			Query: `defer func`,
+			Title: `defer func{}`,
+			Src: `
+				defer func() {
+					${1}
+				}()
+				$0
+			`,
+		},
+		mg.Completion{
+			Query: `defer`,
+			Title: `defer f()`,
+			Src: `
+				defer ${1:f}()
+				$0
+			`,
+		},
+	}
 }
