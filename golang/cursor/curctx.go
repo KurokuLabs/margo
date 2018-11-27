@@ -58,13 +58,13 @@ type CurCtx struct {
 func NewViewCurCtx(mx *mg.Ctx) *CurCtx {
 	type Key struct{ *mg.View }
 	k := Key{mx.View}
-	if cx, ok := mx.Store.Get(k).(*CurCtx); ok {
+	if cx, ok := mx.Get(k).(*CurCtx); ok {
 		return cx
 	}
 
 	src, pos := k.SrcPos()
 	cx := NewCurCtx(mx, src, pos)
-	mx.Store.Put(k, cx)
+	mx.Put(k, cx)
 	return cx
 }
 
@@ -74,12 +74,12 @@ func NewCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 		pos  int
 	}
 	key := Key{mg.SrcHash(src), pos}
-	if cx, ok := mx.Store.Get(key).(*CurCtx); ok {
+	if cx, ok := mx.Get(key).(*CurCtx); ok {
 		return cx
 	}
 
 	cx := newCurCtx(mx, src, pos)
-	mx.Store.Put(key, cx)
+	mx.Put(key, cx)
 	return cx
 }
 
@@ -106,7 +106,7 @@ func newCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 	}
 	cx.printer.fset = token.NewFileSet()
 	cx.printer.buf = &bytes.Buffer{}
-	cx.init(mx.Store)
+	cx.init(mx)
 
 	af := cx.AstFile
 	if af == nil {
