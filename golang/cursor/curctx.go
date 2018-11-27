@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"margo.sh/golang/goutil"
 	"margo.sh/mg"
@@ -11,6 +12,7 @@ import (
 	yotsuba "margo.sh/why_would_you_make_yotsuba_cry"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 var (
@@ -42,6 +44,13 @@ type CurCtx struct {
 	BasicLit   *ast.BasicLit
 	Nodes      []ast.Node
 	Node       ast.Node
+
+	printer struct {
+		sync.Mutex
+		printer.Config
+		fset *token.FileSet
+		buf  *bytes.Buffer
+	}
 }
 
 func NewViewCurCtx(mx *mg.Ctx) *CurCtx {
@@ -91,6 +100,8 @@ func newCurCtx(mx *mg.Ctx, src []byte, pos int) *CurCtx {
 		View: mx.View,
 		Line: bytes.TrimSpace(src[ll:lr]),
 	}
+	cx.printer.fset = token.NewFileSet()
+	cx.printer.buf = &bytes.Buffer{}
 	cx.init(mx.Store, src, pos)
 
 	af := cx.AstFile
@@ -264,6 +275,16 @@ func (cx *CurCtx) Contains(typ ast.Node) bool {
 	return cx.Some(func(n ast.Node) bool {
 		return reflect.TypeOf(n) == t
 	})
+}
+
+func (cx *CurCtx) Print(x ast.Node) (string, error) {
+	p := &cx.printer
+	p.Lock()
+	defer p.Unlock()
+
+	p.buf.Reset()
+	err := p.Fprint(p.buf, p.fset, x)
+	return p.buf.String(), err
 }
 
 func (cx *CurCtx) append(n ast.Node) {
