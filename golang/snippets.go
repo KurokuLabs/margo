@@ -1,7 +1,10 @@
 package golang
 
 import (
+	"bytes"
 	"go/ast"
+	"go/printer"
+	"go/token"
 	"margo.sh/mg"
 	yotsuba "margo.sh/why_would_you_make_yotsuba_cry"
 	"regexp"
@@ -392,32 +395,43 @@ func AppendSnippet(cx *CompletionCtx) []mg.Completion {
 		return nil
 	}
 
-	if !cx.Scope.Is(AssignmentScope) {
+	cl := func(sel string) []mg.Completion {
+		if sel == "" {
+			sel = "s"
+		}
 		return []mg.Completion{
 			mg.Completion{
 				Query: `append`,
-				Title: `append(S, E)`,
-				Src:   `append(${1}, ${2})$0`,
+				Title: `append(` + sel + `, ...)`,
+				Src:   `append(${1:` + sel + `}, ${2})$0`,
+			},
+			mg.Completion{
+				Query: `append:len`,
+				Title: `append(` + sel + `[:len:len], ...)`,
+				Src:   `append(${1:` + sel + `}[:len(${1:` + sel + `}):len(${1:` + sel + `})], ${2})$0`,
 			},
 		}
 	}
 
-	var asn *ast.AssignStmt
-	if !cx.Set(&asn) || len(asn.Lhs) != 1 || len(asn.Rhs) > 1 {
-		return nil
-	}
-	id, _ := asn.Lhs[0].(*ast.Ident)
-	if id == nil {
-		return nil
+	if !cx.Scope.Is(AssignmentScope) {
+		return cl("")
 	}
 
-	return []mg.Completion{
-		mg.Completion{
-			Query: `append`,
-			Title: `append(` + id.Name + `, E)`,
-			Src:   `append(${1:` + id.Name + `}, ${2})$0`,
-		},
+	var asn *ast.AssignStmt
+	if !cx.Set(&asn) || len(asn.Lhs) != 1 || len(asn.Rhs) > 1 {
+		return cl("")
 	}
+
+	sel := ""
+	switch x := asn.Lhs[0].(type) {
+	case *ast.Ident:
+		sel = x.Name
+	case *ast.SelectorExpr:
+		buf := &bytes.Buffer{}
+		printer.Fprint(buf, token.NewFileSet(), x)
+		sel = buf.String()
+	}
+	return cl(sel)
 }
 
 func DocSnippet(cx *CompletionCtx) []mg.Completion {
