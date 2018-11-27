@@ -43,6 +43,7 @@ func DocSnippet(cx *cursor.CurCtx) []mg.Completion {
 		case *ast.FieldList:
 			addFieldNames(x)
 		case *ast.Field:
+			addNames(x.Type)
 			ids = append(ids, x.Names...)
 		case *ast.TypeSpec:
 			ids = append(ids, x.Name)
