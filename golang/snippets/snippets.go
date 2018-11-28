@@ -19,6 +19,7 @@ var (
 		DocSnippet,
 		DeferSnippet,
 		MutexSnippet,
+		ReturnSnippet,
 	}
 )
 
