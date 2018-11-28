@@ -2,6 +2,7 @@ package golang
 
 import (
 	"go/ast"
+	"margo.sh/golang/goutil"
 	"margo.sh/golang/snippets"
 	"margo.sh/mg"
 	"sort"
@@ -41,7 +42,7 @@ func (sf *SnippetFuncsList) Reduce(mx *mg.Ctx) *mg.State {
 }
 
 func (sf *SnippetFuncsList) fixCompletion(c *mg.Completion) {
-	c.Src = Dedent(c.Src)
+	c.Src = goutil.DedentCompletion(c.Src)
 	if c.Tag == "" {
 		c.Tag = mg.SnippetTag
 	}
