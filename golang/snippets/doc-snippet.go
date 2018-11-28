@@ -61,6 +61,16 @@ func DocSnippet(cx *cursor.CurCtx) []mg.Completion {
 	}
 	addNames(cx.Doc.Node)
 
+	pfx := " "
+	// we use View.Pos because cx.Pos might have been changed
+	if i := cx.View.Pos - 1; 0 <= i && i < len(cx.Src) && (cx.Src[i] == ' ' || cx.Src[i] == '.') {
+		pfx = ""
+	}
+	sfx := " "
+	if i := cx.View.Pos; 0 <= i && i < len(cx.Src) && cx.Src[i] == ' ' {
+		sfx = ""
+	}
+
 	seen := map[string]bool{}
 	cl := make([]mg.Completion, 0, len(ids))
 	for _, id := range ids {
@@ -70,7 +80,7 @@ func DocSnippet(cx *cursor.CurCtx) []mg.Completion {
 		seen[id.Name] = true
 		cl = append(cl, mg.Completion{
 			Query: id.Name,
-			Src:   id.Name + ` $0`,
+			Src:   pfx + id.Name + sfx + `$0`,
 		})
 	}
 	return cl
