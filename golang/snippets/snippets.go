@@ -18,6 +18,7 @@ var (
 		AppendSnippet,
 		DocSnippet,
 		DeferSnippet,
+		MutexSnippet,
 	}
 )
 
