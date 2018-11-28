@@ -40,6 +40,19 @@ func PackageNameSnippet(cx *cursor.CurCtx) []mg.Completion {
 	} else {
 		add(pkgDirNamePat.FindString(dir))
 	}
+
+	cl = append(cl, mg.Completion{
+		Query: `package main`,
+		Title: `main{}`,
+		Src: `
+			package main
+
+			func main() {
+				$0
+			}
+		`,
+	})
+
 	add("main")
 
 	return cl
