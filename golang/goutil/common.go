@@ -103,19 +103,24 @@ func IsPkgDir(dir string) bool {
 	return false
 }
 
-func DedentCompletion(s string) string { return Dedent(s) }
+// DedentCompletion Dedents s then trims preceding and succeeding empty lines.
+func DedentCompletion(s string) string {
+	return strings.TrimFunc(Dedent(s), func(r rune) bool {
+		return r == '\n' || r == '\r'
+	})
+}
 
+// Dedent un-indents tab-indented lines is s.
 func Dedent(s string) string {
-	s = strings.TrimLeft(s, "\n")
-	sfx := strings.TrimLeft(s, " \t")
-	pfx := s[:len(s)-len(sfx)]
-	if pfx == "" {
-		return s
-	}
-	s = strings.TrimSpace(s)
 	lines := strings.Split(s, "\n")
-	for i, ln := range lines {
-		lines[i] = strings.TrimPrefix(ln, pfx)
+	pfx := ""
+	for i, s := range lines {
+		if pfx == "" {
+			if sfx := strings.TrimLeft(s, "\t"); sfx != s {
+				pfx = s[:len(s)-len(sfx)]
+			}
+		}
+		lines[i] = strings.TrimPrefix(s, pfx)
 	}
 	return strings.Join(lines, "\n")
 }
