@@ -113,14 +113,24 @@ func DedentCompletion(s string) string {
 // Dedent un-indents tab-indented lines is s.
 func Dedent(s string) string {
 	lines := strings.Split(s, "\n")
-	pfx := ""
-	for i, s := range lines {
-		if pfx == "" {
-			if sfx := strings.TrimLeft(s, "\t"); sfx != s {
-				pfx = s[:len(s)-len(sfx)]
-			}
+	trim := func(s string) int {
+		i := 0
+		for i < len(s) && s[i] == '\t' {
+			i++
 		}
-		lines[i] = strings.TrimPrefix(s, pfx)
+		return i
+	}
+	max := 0
+	for i, s := range lines {
+		cut := trim(s)
+		switch {
+		case max == 0:
+			max = cut
+		case cut > max:
+			cut = max
+		}
+		lines[i] = s[cut:]
 	}
 	return strings.Join(lines, "\n")
+
 }

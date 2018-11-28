@@ -68,7 +68,8 @@ func TestDedentCompletion(t *testing.T) {
 		{
 			`
 				 hello world
-`,
+
+			`,
 			` hello world`,
 		},
 	}
