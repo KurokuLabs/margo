@@ -12,6 +12,7 @@ import (
 	"go/types"
 	"golang.org/x/tools/go/gcexportdata"
 	"log"
+	"margo.sh/golang/goutil"
 	"margo.sh/golang/internal/pkglst"
 	"margo.sh/golang/internal/srcimporter"
 	"margo.sh/mg"
@@ -318,7 +319,7 @@ func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, impPath, srcDir string) (gsuPkgInfo
 		}
 	}()
 
-	if pkglst.ModEnabled(mx, srcDir) {
+	if goutil.ModEnabled(mx, srcDir) {
 		for _, p := range mgc.plst.View().ByImportPath[impPath] {
 			if p.Standard {
 				return gsuPkgInfo{
