@@ -1,16 +1,16 @@
-package pkglst
+package gopkg
 
 import (
 	"margo.sh/golang/goutil"
-	"margo.sh/internal/vfs"
 	"margo.sh/mg"
+	"margo.sh/vfs"
 	"path/filepath"
 )
 
 func ImportDir(mx *mg.Ctx, path string) (*Pkg, error) {
 	path = filepath.Clean(path)
 
-	kv, _, err := vfs.Root.StatKV(path)
+	kv, err := vfs.Root.KV(path)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func ImportDir(mx *mg.Ctx, path string) (*Pkg, error) {
 		ImportPath: bpkg.ImportPath,
 		Standard:   bpkg.Goroot,
 	}
-	p.finalize()
+	p.Finalize()
 	kv.Put(k, p)
 	return p, nil
 }

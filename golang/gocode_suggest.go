@@ -5,7 +5,7 @@ import (
 	"go/build"
 	"go/types"
 	"kuroku.io/margocode/suggest"
-	"margo.sh/golang/internal/pkglst"
+	"margo.sh/golang/gopkg"
 	"margo.sh/mg"
 	"margo.sh/mgutil"
 	"runtime/debug"
@@ -250,7 +250,7 @@ func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, k mgcCacheKey, 
 		mctl.pkgs.put(mgcCacheEnt{Key: k, Pkg: pkg, Dur: impDur})
 
 		if _, ok := mctl.plst.View().ByDir[k.Dir]; !ok {
-			mctl.plst.Add(pkglst.Pkg{
+			mctl.plst.Add(gopkg.Pkg{
 				Dir:        k.Dir,
 				ImportPath: k.Path,
 				Name:       pkg.Name(),
