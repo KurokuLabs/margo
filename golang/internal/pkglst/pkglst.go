@@ -1,17 +1,12 @@
 package pkglst
 
 import (
-	"bytes"
-	"fmt"
-	"github.com/ugorji/go/codec"
 	"margo.sh/golang/gopkg"
 	"margo.sh/mg"
-	"margo.sh/mgpf"
-	"os/exec"
+	"margo.sh/vfs"
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 )
 
 type View struct {
@@ -106,7 +101,7 @@ type Cache struct {
 }
 
 func (cc *Cache) Scan(mx *mg.Ctx, dir string) (output []byte, _ error) {
-	lst, out, err := cc.goList(mx, dir)
+	lst, out, err := cc.vfsList(mx, dir)
 
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -143,42 +138,12 @@ func (cc *Cache) View() View {
 	return cc.view
 }
 
-func (cc *Cache) goList(mx *mg.Ctx, dir string) (_ []*gopkg.Pkg, output []byte, _ error) {
-	start := time.Now()
-	outBuf := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	cmd := exec.Command("go", "list", "-e", "-json", "./...")
-	cmd.Dir = dir
-	cmd.Env = mx.Env.Merge(mg.EnvMap{
-		"GOPROXY":     "off",
-		"GO111MODULE": "off",
-	}).Environ()
-	cmd.Stdout = outBuf
-	cmd.Stderr = errBuf
-
-	err := cmd.Run()
-	cmdDur := mgpf.D(time.Since(start))
-
-	start = time.Now()
+func (cc *Cache) vfsList(mx *mg.Ctx, dir string) ([]*gopkg.Pkg, []byte, error) {
 	lst := []*gopkg.Pkg{}
-	dec := codec.NewDecoder(outBuf, &codec.JsonHandle{})
-	for {
-		p := &gopkg.Pkg{}
-		err := dec.Decode(p)
-		if p.Name != "" && p.ImportPath != "" && p.Dir != "" {
-			p.Finalize()
+	vfs.Root.Peek(dir).Branches(func(dir string, nd *vfs.Node) {
+		if p, err := gopkg.ImportDir(mx, dir); err == nil {
 			lst = append(lst, p)
 		}
-		if err != nil {
-			break
-		}
-	}
-	decDur := mgpf.D(time.Since(start))
-
-	fmt.Fprintf(errBuf, "``` packages=%d, list=%s, decode=%s, error=%v ```\n", len(lst), cmdDur, decDur, err)
-	if err != nil {
-		fmt.Fprintf(errBuf, "``` Error: %s```\n", err)
-	}
-
-	return lst, bytes.TrimSpace(errBuf.Bytes()), err
+	})
+	return lst, nil, nil
 }
