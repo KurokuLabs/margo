@@ -40,5 +40,5 @@ func (vc *vfsCmd) saved(mx *mg.Ctx) {
 }
 
 func init() {
-	mg.DefaultReducers.Use(&vfsCmd{})
+	mg.DefaultReducers.Before(&vfsCmd{})
 }
