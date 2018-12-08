@@ -29,11 +29,16 @@ type KVStore interface {
 }
 
 // KVStores implements a KVStore that duplicates its operations on a list of k/v stores
+//
+// NOTE: All operations are no-ops for nil KVStores
 type KVStores []KVStore
 
 // Put calls .Put on each of k/v stores in the list
 func (kvl KVStores) Put(k, v interface{}) {
 	for _, kvs := range kvl {
+		if kvs == nil {
+			continue
+		}
 		kvs.Put(k, v)
 	}
 }
@@ -41,6 +46,9 @@ func (kvl KVStores) Put(k, v interface{}) {
 // Get returns the first value identified by k found in the list of k/v stores
 func (kvl KVStores) Get(k interface{}) interface{} {
 	for _, kvs := range kvl {
+		if kvs == nil {
+			continue
+		}
 		if v := kvs.Get(k); v != nil {
 			return v
 		}
@@ -51,12 +59,17 @@ func (kvl KVStores) Get(k interface{}) interface{} {
 // Del removed the value identified by k from all k/v stores in the list
 func (kvl KVStores) Del(k interface{}) {
 	for _, kvs := range kvl {
+		if kvs == nil {
+			continue
+		}
 		kvs.Del(k)
 	}
 }
 
 // KVMap implements a KVStore using a map.
 // The zero-value is safe for use with all operations.
+//
+// NOTE: All operations are no-ops on a nil KVMap
 type KVMap struct {
 	vals map[interface{}]interface{}
 	mu   sync.RWMutex
@@ -64,6 +77,10 @@ type KVMap struct {
 
 // Put implements KVStore.Put
 func (m *KVMap) Put(k interface{}, v interface{}) {
+	if m == nil {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -76,6 +93,10 @@ func (m *KVMap) Put(k interface{}, v interface{}) {
 
 // Get implements KVStore.Get
 func (m *KVMap) Get(k interface{}) interface{} {
+	if m == nil {
+		return nil
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -84,6 +105,10 @@ func (m *KVMap) Get(k interface{}) interface{} {
 
 // Del implements KVStore.Del
 func (m *KVMap) Del(k interface{}) {
+	if m == nil {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -92,6 +117,10 @@ func (m *KVMap) Del(k interface{}) {
 
 // Clear removes all values from the store
 func (m *KVMap) Clear() {
+	if m == nil {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -100,6 +129,10 @@ func (m *KVMap) Clear() {
 
 // Values returns a copy of all values stored
 func (m *KVMap) Values() map[interface{}]interface{} {
+	if m == nil {
+		return nil
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
