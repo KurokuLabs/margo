@@ -12,13 +12,14 @@ import (
 	"go/types"
 	"golang.org/x/tools/go/gcexportdata"
 	"log"
+	"margo.sh/golang/gopkg"
 	"margo.sh/golang/goutil"
 	"margo.sh/golang/internal/pkglst"
 	"margo.sh/golang/internal/srcimporter"
-	"margo.sh/internal/vfs"
 	"margo.sh/mg"
 	"margo.sh/mgpf"
 	"margo.sh/mgutil"
+	"margo.sh/vfs"
 	"math"
 	"path/filepath"
 	"regexp"
@@ -103,7 +104,7 @@ func (mgc *marGocodeCtl) importPathByName(pkgName, srcDir string) string {
 	// it includes packages the user actually imported
 	// so there's theoretically a better chance of importing the ideal package
 	// in cases where there's a name collision
-	cached := func(pk *pkglst.Pkg) bool {
+	cached := func(pk *gopkg.Pkg) bool {
 		ok := false
 		mgc.pkgs.forEach(func(e mgcCacheEnt) bool {
 			if p := e.Pkg; p.Name() == pk.Name && e.Key.Path == pk.ImportPath {
@@ -299,7 +300,7 @@ func (mgc *marGocodeCtl) scanVFS(mx *mg.Ctx, rootName, rootDir string) {
 		if !d.SomeSuffix(".go") {
 			return
 		}
-		_, err := pkglst.ImportDir(mx, d.dir)
+		_, err := gopkg.ImportDir(mx, d.dir)
 		if err != nil {
 			return
 		}

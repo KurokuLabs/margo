@@ -75,6 +75,8 @@ func (fs *FS) Remove(path string) { fs.Peek(path).Remove() }
 
 func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path, 0).Stat() }
 
+func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path, 0).KV() }
+
 func (fs *FS) StatKV(path string) (mg.KVStore, os.FileInfo, error) { return fs.Poke(path, 0).StatKV() }
 
 func (fs *FS) Scan(path string, so ScanOptions) error {
@@ -462,6 +464,11 @@ func (nd *Node) print(w io.Writer, filter func(*Node) string, indent string) {
 		fmt.Fprintf(w, "%s %s\n", pfx, c.s)
 		c.print(w, filter, ind)
 	}
+}
+
+func (nd *Node) KV() (mg.KVStore, error) {
+	kv, _, err := nd.StatKV()
+	return kv, err
 }
 
 func (nd *Node) StatKV() (mg.KVStore, os.FileInfo, error) {
