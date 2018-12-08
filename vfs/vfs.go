@@ -73,6 +73,8 @@ func (fs *FS) Poke(path string, mode os.FileMode) *Node { return fs.poke(PathCom
 
 func (fs *FS) Remove(path string) { fs.Peek(path).Remove() }
 
+func (fs *FS) Sync(path string) { fs.Poke(path, 0).Sync() }
+
 func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path, 0).Stat() }
 
 func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path, 0).KV() }
@@ -479,7 +481,7 @@ func (nd *Node) StatKV() (mg.KVStore, os.FileInfo, error) {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	fi, err := nd.stat()
+	fi, err := nd.stat(true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -487,6 +489,17 @@ func (nd *Node) StatKV() (mg.KVStore, os.FileInfo, error) {
 		nd.kv = &mg.KVMap{}
 	}
 	return nd.kv, fi, nil
+}
+
+func (nd *Node) Sync() {
+	if nd == nil {
+		return
+	}
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	nd.stat(false)
 }
 
 func (nd *Node) Stat() (os.FileInfo, error) {
@@ -497,11 +510,11 @@ func (nd *Node) Stat() (os.FileInfo, error) {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	return nd.stat()
+	return nd.stat(true)
 }
 
-func (nd *Node) stat() (os.FileInfo, error) {
-	if fi := nd.fi; fi != nil && !fi.expired() {
+func (nd *Node) stat(useCache bool) (os.FileInfo, error) {
+	if fi := nd.fi; useCache && fi != nil && !fi.expired() {
 		return fi.FileInfo, nil
 	}
 
