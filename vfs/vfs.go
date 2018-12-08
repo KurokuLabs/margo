@@ -69,17 +69,17 @@ func New(o Options) *FS {
 
 func (fs *FS) Peek(path string) *Node { return fs.peek(PathComponents(path)) }
 
-func (fs *FS) Poke(path string, mode os.FileMode) *Node { return fs.poke(PathComponents(path)) }
+func (fs *FS) Poke(path string) *Node { return fs.poke(PathComponents(path)) }
 
 func (fs *FS) Remove(path string) { fs.Peek(path).Remove() }
 
-func (fs *FS) Sync(path string) { fs.Poke(path, 0).Sync() }
+func (fs *FS) Sync(path string) { fs.Poke(path).Sync() }
 
-func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path, 0).Stat() }
+func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path).Stat() }
 
-func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path, 0).KV() }
+func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path).KV() }
 
-func (fs *FS) StatKV(path string) (mg.KVStore, os.FileInfo, error) { return fs.Poke(path, 0).StatKV() }
+func (fs *FS) StatKV(path string) (mg.KVStore, os.FileInfo, error) { return fs.Poke(path).StatKV() }
 
 func (fs *FS) Scan(path string, so ScanOptions) error {
 	if !filepath.IsAbs(path) {
@@ -89,7 +89,7 @@ func (fs *FS) Scan(path string, so ScanOptions) error {
 	if so.Filter == nil {
 		so.Filter = DefaultScanFilter
 	}
-	fs.Poke(path, os.ModeDir).scan(path, so)
+	fs.Poke(path).scan(path, so)
 	return nil
 }
 
