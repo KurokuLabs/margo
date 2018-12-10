@@ -77,9 +77,9 @@ func (fs *FS) Sync(path string) { fs.Poke(path).Sync() }
 
 func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path).Stat() }
 
-func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path).KV() }
+func (fs *FS) KV(path string) (*mg.KVMap, error) { return fs.Poke(path).KV() }
 
-func (fs *FS) StatKV(path string) (mg.KVStore, os.FileInfo, error) { return fs.Poke(path).StatKV() }
+func (fs *FS) StatKV(path string) (*mg.KVMap, os.FileInfo, error) { return fs.Poke(path).StatKV() }
 
 func (fs *FS) Scan(path string, so ScanOptions) error {
 	if !filepath.IsAbs(path) {
@@ -472,12 +472,12 @@ func (nd *Node) print(w io.Writer, filter func(*Node) string, indent string) {
 	}
 }
 
-func (nd *Node) KV() (mg.KVStore, error) {
+func (nd *Node) KV() (*mg.KVMap, error) {
 	kv, _, err := nd.StatKV()
 	return kv, err
 }
 
-func (nd *Node) StatKV() (mg.KVStore, os.FileInfo, error) {
+func (nd *Node) StatKV() (*mg.KVMap, os.FileInfo, error) {
 	if nd == nil {
 		return nil, nil, os.ErrNotExist
 	}
