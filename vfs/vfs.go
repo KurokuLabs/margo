@@ -201,6 +201,10 @@ func (nd *Node) IsBranch() bool {
 	nd.mu.RLock()
 	defer nd.mu.RUnlock()
 
+	return nd.isBranch()
+}
+
+func (nd *Node) isBranch() bool {
 	return len(nd.cl) != 0
 }
 
@@ -521,8 +525,13 @@ func (nd *Node) stat(useCache bool) (os.FileInfo, error) {
 	fi, err := os.Stat(nd.Path())
 	// only reset if the mtime changed
 	reset := fi == nil || nd.fi == nil || !nd.fi.ModTime().Equal(fi.ModTime())
-	if reset && nd.kv != nil {
+	if reset {
 		nd.kv.Clear()
+		if p := nd.parent; p != nil && !nd.isBranch() {
+			p.mu.Lock()
+			p.kv.Clear()
+			p.mu.Unlock()
+		}
 	}
 
 	if err != nil {
