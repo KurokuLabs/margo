@@ -37,7 +37,6 @@ func (gsu *gcSuggest) newGsuImporter(mx *mg.Ctx) *gsuImporter {
 	gi := &gsuImporter{
 		mx:  mx,
 		bld: BuildContext(mx),
-		gsu: gsu,
 	}
 	gi.res.m = map[mgcCacheKey]gsuImpRes{}
 	return gi
@@ -124,7 +123,6 @@ func (p gsuPkgInfo) cacheKey(source bool) mgcCacheKey {
 type gsuImporter struct {
 	mx  *mg.Ctx
 	bld *build.Context
-	gsu *gcSuggest
 
 	res struct {
 		sync.Mutex
