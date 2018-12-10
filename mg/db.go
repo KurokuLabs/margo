@@ -103,6 +103,37 @@ func (m *KVMap) Get(k interface{}) interface{} {
 	return m.vals[k]
 }
 
+func (m *KVMap) GetDefault(k interface{}, def func() interface{}) interface{} {
+	if m == nil {
+		if def == nil {
+			return nil
+		}
+		return def()
+	}
+
+	m.mu.RLock()
+	v := m.vals[k]
+	m.mu.RUnlock()
+
+	if v != nil || def == nil {
+		return v
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if v := m.vals[k]; v != nil {
+		return v
+	}
+
+	if m.vals == nil {
+		m.vals = map[interface{}]interface{}{}
+	}
+	v = def()
+	m.vals[k] = v
+	return v
+}
+
 // Del implements KVStore.Del
 func (m *KVMap) Del(k interface{}) {
 	if m == nil {
