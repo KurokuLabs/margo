@@ -146,6 +146,23 @@ func (nl NodeList) Remove(nd *Node) {
 	nl = nl[:len(nl)-1]
 }
 
+func (nl NodeList) SomePrefix(pfx string) bool {
+	return nl.Some(func(nd *Node) bool { return strings.HasPrefix(nd.name, pfx) })
+}
+
+func (nl NodeList) SomeSuffix(sfx string) bool {
+	return nl.Some(func(nd *Node) bool { return strings.HasSuffix(nd.name, sfx) })
+}
+
+func (nl NodeList) Some(f func(nd *Node) bool) bool {
+	for _, c := range nl {
+		if f(c) {
+			return true
+		}
+	}
+	return false
+}
+
 type Node struct {
 	parent *Node
 	opts   *Options
@@ -158,11 +175,26 @@ type Node struct {
 }
 
 func (nd *Node) SomePrefix(pfx string) bool {
-	return nd.Some(func(nd *Node) bool { return strings.HasPrefix(nd.name, pfx) })
+	if nd == nil {
+		return false
+	}
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	return nd.cl.SomePrefix(pfx)
+
 }
 
 func (nd *Node) SomeSuffix(sfx string) bool {
-	return nd.Some(func(nd *Node) bool { return strings.HasSuffix(nd.name, sfx) })
+	if nd == nil {
+		return false
+	}
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	return nd.cl.SomeSuffix(sfx)
 }
 
 func (nd *Node) Some(f func(nd *Node) bool) bool {
@@ -173,12 +205,7 @@ func (nd *Node) Some(f func(nd *Node) bool) bool {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	for _, c := range nd.cl {
-		if f(c) {
-			return true
-		}
-	}
-	return false
+	return nd.cl.Some(f)
 }
 
 func (nd *Node) String() string {
@@ -239,7 +266,7 @@ func (nd *Node) IsDescendant(ancestor *Node) bool {
 	return false
 }
 
-func (nd *Node) Branches(f func(path string, nd *Node)) {
+func (nd *Node) Branches(f func(path string, nd *Node, cl NodeList)) {
 	nd.branches("", f)
 }
 
@@ -295,7 +322,7 @@ func (nd *Node) scan(root string, so ScanOptions) {
 	}
 }
 
-func (nd *Node) branches(root string, f func(path string, nd *Node)) {
+func (nd *Node) branches(root string, f func(path string, nd *Node, cl NodeList)) {
 	if nd == nil {
 		return
 	}
@@ -310,7 +337,7 @@ func (nd *Node) branches(root string, f func(path string, nd *Node)) {
 		// we're the origin node, we can't call f
 		root = nd.Path()
 	} else {
-		f(root, nd)
+		f(root, nd, cl)
 	}
 
 	for _, c := range cl {
