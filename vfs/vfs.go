@@ -7,7 +7,6 @@ import (
 	"io"
 	"margo.sh/mg"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -591,8 +590,11 @@ func (nd *Node) stat(useCache bool) (os.FileInfo, error) {
 }
 
 func PathComponents(p string) []string {
+	p = filepath.Clean(p)
+	if p == "." {
+		return nil
+	}
 	p = filepath.ToSlash(p)
-	p = path.Clean(p)
 	if filepath.Separator == '/' {
 		p = strings.TrimPrefix(p, "/")
 	}
