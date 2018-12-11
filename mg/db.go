@@ -66,6 +66,11 @@ func (kvl KVStores) Del(k interface{}) {
 	}
 }
 
+type kvRef struct {
+	sync.Mutex
+	val interface{}
+}
+
 // KVMap implements a KVStore using a map.
 // The zero-value is safe for use with all operations.
 //
@@ -84,10 +89,13 @@ func (m *KVMap) Put(k interface{}, v interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.put(k, v)
+}
+
+func (m *KVMap) put(k interface{}, v interface{}) {
 	if m.vals == nil {
 		m.vals = map[interface{}]interface{}{}
 	}
-
 	m.vals[k] = v
 }
 
@@ -98,40 +106,50 @@ func (m *KVMap) Get(k interface{}) interface{} {
 	}
 
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.vals[k]
-}
-
-func (m *KVMap) GetDefault(k interface{}, def func() interface{}) interface{} {
-	if m == nil {
-		if def == nil {
-			return nil
-		}
-		return def()
-	}
-
-	m.mu.RLock()
 	v := m.vals[k]
 	m.mu.RUnlock()
 
-	if v != nil || def == nil {
-		return v
+	return m.unref(v)
+}
+
+func (m *KVMap) Ref(k interface{}, new func() interface{}) interface{} {
+	if m == nil {
+		return new()
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	ref := m.ref(k)
+	m.mu.Unlock()
 
-	if v := m.vals[k]; v != nil {
+	ref.Lock()
+	defer ref.Unlock()
+
+	if ref.val == nil {
+		ref.val = new()
+	}
+	return ref.val
+}
+
+func (m *KVMap) ref(k interface{}) *kvRef {
+	v := m.vals[k]
+	ref, ok := v.(*kvRef)
+	if !ok {
+		ref = &kvRef{val: v}
+		m.put(k, ref)
+	}
+	return ref
+}
+
+func (m *KVMap) unref(v interface{}) interface{} {
+	ref, boxed := v.(*kvRef)
+	if !boxed {
 		return v
 	}
 
-	if m.vals == nil {
-		m.vals = map[interface{}]interface{}{}
-	}
-	v = def()
-	m.vals[k] = v
-	return v
+	ref.Lock()
+	defer ref.Unlock()
+
+	return ref.val
 }
 
 // Del implements KVStore.Del
@@ -155,7 +173,7 @@ func (m *KVMap) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.vals = map[interface{}]interface{}{}
+	m.vals = nil
 }
 
 // Values returns a copy of all values stored
@@ -164,12 +182,14 @@ func (m *KVMap) Values() map[interface{}]interface{} {
 		return nil
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	vals := make(map[interface{}]interface{}, len(m.vals))
 	for k, v := range m.vals {
-		vals[k] = v
+		if v := m.unref(v); v != nil {
+			vals[k] = v
+		}
 	}
 	return vals
 }
