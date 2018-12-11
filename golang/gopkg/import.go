@@ -18,17 +18,25 @@ func ImportDir(mx *mg.Ctx, dir string) (*Pkg, error) {
 		return nil, &build.NoGoError{Dir: dir}
 	}
 
-	type K struct{}
-	v, err := kv.Memo(K{}, func() (interface{}, error) {
-		p, err := importDir(mx, dir)
+	bctx := goutil.BuildContext(mx)
+	type K struct {
+		GOROOT string
+		GOPATH string
+	}
+	k := K{
+		GOROOT: bctx.GOROOT,
+		GOPATH: bctx.GOPATH,
+	}
+	v, err := kv.Memo(k, func() (interface{}, error) {
+		p, err := importDir(bctx, dir)
 		return p, err
 	})
 	p, _ := v.(*Pkg)
 	return p, err
 }
 
-func importDir(mx *mg.Ctx, dir string) (*Pkg, error) {
-	bpkg, err := goutil.BuildContext(mx).ImportDir(dir, 0)
+func importDir(bctx *build.Context, dir string) (*Pkg, error) {
+	bpkg, err := bctx.ImportDir(dir, 0)
 	if err != nil {
 		return nil, err
 	}
