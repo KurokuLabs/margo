@@ -140,7 +140,7 @@ func (cc *Cache) View() View {
 
 func (cc *Cache) vfsList(mx *mg.Ctx, dir string) ([]*gopkg.Pkg, []byte, error) {
 	lst := []*gopkg.Pkg{}
-	vfs.Root.Peek(dir).Branches(func(dir string, nd *vfs.Node) {
+	vfs.Root.Peek(dir).Branches(func(dir string, nd *vfs.Node, cl vfs.NodeList) {
 		if p, err := gopkg.ImportDir(mx, dir); err == nil {
 			lst = append(lst, p)
 		}
