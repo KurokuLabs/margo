@@ -77,7 +77,7 @@ type kvRef struct {
 // NOTE: All operations are no-ops on a nil KVMap
 type KVMap struct {
 	vals map[interface{}]interface{}
-	mu   sync.RWMutex
+	mu   sync.Mutex
 }
 
 // Put implements KVStore.Put
@@ -105,9 +105,9 @@ func (m *KVMap) Get(k interface{}) interface{} {
 		return nil
 	}
 
-	m.mu.RLock()
+	m.mu.Lock()
 	v := m.vals[k]
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
 	return m.unref(v)
 }

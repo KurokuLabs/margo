@@ -139,7 +139,7 @@ type Node struct {
 	opts   *Options
 	name   string
 
-	mu sync.RWMutex
+	mu sync.Mutex
 	fi *fileInfo
 	kv *mg.KVMap
 	cl NodeList
@@ -158,8 +158,8 @@ func (nd *Node) Some(f func(nd *Node) bool) bool {
 		return false
 	}
 
-	nd.mu.RLock()
-	defer nd.mu.RUnlock()
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
 
 	for _, c := range nd.cl {
 		if f(c) {
@@ -198,8 +198,8 @@ func (nd *Node) IsBranch() bool {
 		return false
 	}
 
-	nd.mu.RLock()
-	defer nd.mu.RUnlock()
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
 
 	return nd.isBranch()
 }
