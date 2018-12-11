@@ -75,11 +75,23 @@ func (fs *FS) Remove(path string) { fs.Peek(path).Remove() }
 
 func (fs *FS) Sync(path string) { fs.Poke(path).Sync() }
 
-func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path).Stat() }
+func (fs *FS) Stat(path string) (*Node, os.FileInfo, error) {
+	nd := fs.Poke(path)
+	fi, err := nd.Stat()
+	return nd, fi, err
+}
 
-func (fs *FS) KV(path string) (*mg.KVMap, error) { return fs.Poke(path).KV() }
+func (fs *FS) KV(path string) (*Node, *mg.KVMap, error) {
+	nd := fs.Poke(path)
+	kv, err := nd.KV()
+	return nd, kv, err
+}
 
-func (fs *FS) StatKV(path string) (*mg.KVMap, os.FileInfo, error) { return fs.Poke(path).StatKV() }
+func (fs *FS) StatKV(path string) (*Node, *mg.KVMap, os.FileInfo, error) {
+	nd := fs.Poke(path)
+	kv, fi, err := nd.StatKV()
+	return nd, kv, fi, err
+}
 
 func (fs *FS) Scan(path string, so ScanOptions) error {
 	if !filepath.IsAbs(path) {
