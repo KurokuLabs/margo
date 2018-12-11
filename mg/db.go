@@ -112,7 +112,7 @@ func (m *KVMap) Get(k interface{}) interface{} {
 	return m.unref(v)
 }
 
-func (m *KVMap) Ref(k interface{}, new func() interface{}) interface{} {
+func (m *KVMap) Memo(k interface{}, new func() (interface{}, error)) (interface{}, error) {
 	if m == nil {
 		return new()
 	}
@@ -124,10 +124,14 @@ func (m *KVMap) Ref(k interface{}, new func() interface{}) interface{} {
 	ref.Lock()
 	defer ref.Unlock()
 
+	var err error
 	if ref.val == nil {
-		ref.val = new()
+		ref.val, err = new()
+		if err != nil {
+			ref.val = nil
+		}
 	}
-	return ref.val
+	return ref.val, err
 }
 
 func (m *KVMap) ref(k interface{}) *kvRef {
