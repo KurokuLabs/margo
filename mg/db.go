@@ -66,11 +66,6 @@ func (kvl KVStores) Del(k interface{}) {
 	}
 }
 
-type kvRef struct {
-	sync.Mutex
-	val interface{}
-}
-
 // KVMap implements a KVStore using a map.
 // The zero-value is safe for use with all operations.
 //
@@ -89,10 +84,6 @@ func (m *KVMap) Put(k interface{}, v interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.put(k, v)
-}
-
-func (m *KVMap) put(k interface{}, v interface{}) {
 	if m.vals == nil {
 		m.vals = map[interface{}]interface{}{}
 	}
@@ -106,54 +97,9 @@ func (m *KVMap) Get(k interface{}) interface{} {
 	}
 
 	m.mu.Lock()
-	v := m.vals[k]
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	return m.unref(v)
-}
-
-func (m *KVMap) Memo(k interface{}, new func() (interface{}, error)) (interface{}, error) {
-	if m == nil {
-		return new()
-	}
-
-	m.mu.Lock()
-	ref := m.ref(k)
-	m.mu.Unlock()
-
-	ref.Lock()
-	defer ref.Unlock()
-
-	var err error
-	if ref.val == nil {
-		ref.val, err = new()
-		if err != nil {
-			ref.val = nil
-		}
-	}
-	return ref.val, err
-}
-
-func (m *KVMap) ref(k interface{}) *kvRef {
-	v := m.vals[k]
-	ref, ok := v.(*kvRef)
-	if !ok {
-		ref = &kvRef{val: v}
-		m.put(k, ref)
-	}
-	return ref
-}
-
-func (m *KVMap) unref(v interface{}) interface{} {
-	ref, boxed := v.(*kvRef)
-	if !boxed {
-		return v
-	}
-
-	ref.Lock()
-	defer ref.Unlock()
-
-	return ref.val
+	return m.vals[k]
 }
 
 // Del implements KVStore.Del
@@ -191,9 +137,7 @@ func (m *KVMap) Values() map[interface{}]interface{} {
 
 	vals := make(map[interface{}]interface{}, len(m.vals))
 	for k, v := range m.vals {
-		if v := m.unref(v); v != nil {
-			vals[k] = v
-		}
+		vals[k] = v
 	}
 	return vals
 }
