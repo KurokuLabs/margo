@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/build"
 	"go/token"
+	"io"
 	"margo.sh/mg"
 	yotsuba "margo.sh/why_would_you_make_yotsuba_cry"
 	"os"
@@ -29,7 +30,34 @@ func BuildContext(mx *mg.Ctx) *build.Context {
 	}
 	c.GOROOT = logUndefined("GOROOT")
 	c.GOPATH = logUndefined("GOPATH")
+	c.ReadDir = mx.VFS.ReadDir
+	c.IsDir = mx.VFS.IsDir
+	c.HasSubdir = HasImportPath // rage against the ~~machine~~symlinks...
+	c.OpenFile = func(p string) (io.ReadCloser, error) {
+		if v := mx.View; v != nil && p == v.Path {
+			return v.Open()
+		}
+		return os.Open(p)
+	}
 	return &c
+}
+
+// HasImportPath reports whether dir is lexically a subdirectory of root.
+// If so, it sets importPath to a slash-separated path that
+// can be joined to root to produce a path equivalent to dir.
+//
+// HasImportPath is an implementation of go/build.Context.HasSubdir
+func HasImportPath(root, dir string) (importPath string, ok bool) {
+	root = filepath.Clean(root)
+	dir = filepath.Clean(dir)
+	if !strings.HasPrefix(dir, root) || root == dir {
+		return "", false
+	}
+	importPath = filepath.ToSlash(dir[len(root):])
+	if !strings.HasPrefix(importPath, string(filepath.Separator)) {
+		return "", false
+	}
+	return importPath[1:], true
 }
 
 func PathList(p string) []string {

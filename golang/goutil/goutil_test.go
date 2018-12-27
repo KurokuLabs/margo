@@ -1,6 +1,8 @@
 package goutil
 
 import (
+	"go/build"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -78,5 +80,27 @@ func TestDedentCompletion(t *testing.T) {
 		if got != c.want {
 			t.Errorf("got `%s`, want `%s`", got, c.want)
 		}
+	}
+}
+
+func TestHasImportPath(t *testing.T) {
+	root := build.Default.GOROOT
+	src := filepath.Join(root, "src")
+	cmd := filepath.Join(root, "cmd")
+	if p, _ := HasImportPath(src, filepath.Join(src, "p", "k", "g")); p != "p/k/g" {
+		t.Fatalf("Expected `%s`, got `%s`\n", "p/k/g", p)
+	}
+	if p, _ := HasImportPath(src, cmd); p != "" {
+		t.Fatalf("Expected `%s`, got `%s`\n", "", p)
+	}
+}
+
+func BenchmarkHasImportPath(b *testing.B) {
+	root := build.Default.GOROOT
+	src := filepath.Join(root, "src")
+	cmd := filepath.Join(root, "cmd")
+	for i := 0; i < b.N; i++ {
+		HasImportPath(root, src)
+		HasImportPath(src, cmd)
 	}
 }
