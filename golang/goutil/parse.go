@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"io/ioutil"
 	"margo.sh/mg"
-	"margo.sh/vfs"
 )
 
 const (
@@ -30,11 +29,11 @@ type ParsedFile struct {
 	ErrorList scanner.ErrorList
 }
 
-func ParseFile(kvs mg.KVStore, fn string, src []byte) *ParsedFile {
-	return ParseFileWithMode(kvs, fn, src, ParseFileMode)
+func ParseFile(mx *mg.Ctx, fn string, src []byte) *ParsedFile {
+	return ParseFileWithMode(mx, fn, src, ParseFileMode)
 }
 
-func ParseFileWithMode(kvs mg.KVStore, fn string, src []byte, mode parser.Mode) *ParsedFile {
+func ParseFileWithMode(mx *mg.Ctx, fn string, src []byte, mode parser.Mode) *ParsedFile {
 	if len(src) == 0 {
 		var err error
 		if fn != "" {
@@ -55,14 +54,12 @@ func ParseFileWithMode(kvs mg.KVStore, fn string, src []byte, mode parser.Mode) 
 		mode parser.Mode
 	}
 	k := key{hash: mg.SrcHash(src), mode: mode}
-	if kvs != nil {
-		if pf, ok := kvs.Get(k).(*ParsedFile); ok {
-			return pf
-		}
+	if pf, ok := mx.Get(k).(*ParsedFile); ok {
+		return pf
 	}
 
-	_, kv, _ := vfs.Root.KV(fn)
-	v, _ := kv.Memo(k, func() (interface{}, error) {
+	_, memo, _ := mx.VFS.Memo(fn)
+	pf := memo.Read(k, func() interface{} {
 		pf := &ParsedFile{Fset: token.NewFileSet()}
 		pf.AstFile, pf.Error = parser.ParseFile(pf.Fset, fn, src, mode)
 		if pf.AstFile == nil {
@@ -73,11 +70,8 @@ func ParseFileWithMode(kvs mg.KVStore, fn string, src []byte, mode parser.Mode) 
 			pf.TokenFile = NilTokenFile
 		}
 		pf.ErrorList, _ = pf.Error.(scanner.ErrorList)
-		return pf, nil
-	})
-	pf, _ := v.(*ParsedFile)
-	if kvs != nil {
-		kvs.Put(k, pf)
-	}
+		return pf
+	}).(*ParsedFile)
+	mx.Put(k, pf)
 	return pf
 }
