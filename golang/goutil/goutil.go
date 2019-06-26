@@ -14,7 +14,15 @@ import (
 	"unicode/utf8"
 )
 
-func BuildContext(mx *mg.Ctx) *build.Context {
+type SrcDirKey struct {
+	GOROOT, GOPATH, SrcDir string
+}
+
+func MakeSrcDirKey(bctx *build.Context, srcDir string) SrcDirKey {
+	return SrcDirKey{bctx.GOROOT, bctx.GOPATH, filepath.Clean(srcDir)}
+}
+
+func BuildContextWithoutCallbacks(mx *mg.Ctx) *build.Context {
 	c := build.Default
 	c.GOARCH = mx.Env.Get("GOARCH", c.GOARCH)
 	c.GOOS = mx.Env.Get("GOOS", c.GOOS)
@@ -30,6 +38,11 @@ func BuildContext(mx *mg.Ctx) *build.Context {
 	}
 	c.GOROOT = logUndefined("GOROOT")
 	c.GOPATH = logUndefined("GOPATH")
+	return &c
+}
+
+func BuildContext(mx *mg.Ctx) *build.Context {
+	c := BuildContextWithoutCallbacks(mx)
 	c.ReadDir = mx.VFS.ReadDir
 	c.IsDir = mx.VFS.IsDir
 	c.HasSubdir = HasImportPath // rage against the ~~machine~~symlinks...
@@ -39,7 +52,7 @@ func BuildContext(mx *mg.Ctx) *build.Context {
 		}
 		return os.Open(p)
 	}
-	return &c
+	return c
 }
 
 // HasImportPath reports whether dir is lexically a subdirectory of root.
@@ -63,7 +76,8 @@ func HasImportPath(root, dir string) (importPath string, ok bool) {
 func PathList(p string) []string {
 	l := []string{}
 	for _, s := range strings.Split(p, string(filepath.ListSeparator)) {
-		if s != "" {
+		s = filepath.Clean(s)
+		if filepath.IsAbs(s) {
 			l = append(l, s)
 		}
 	}
