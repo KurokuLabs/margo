@@ -13,7 +13,7 @@ const (
 
 // ModEnabled returns true of Go modules are enabled in srcDir
 func ModEnabled(mx *mg.Ctx, srcDir string) bool {
-	// - Inside GOPATH — defaults to old 1.10 behavior (ignoring modules)
+	// - If on Go <= go1.12 and inside GOPATH — defaults to old 1.10 behavior (ignoring modules)
 	// - Outside GOPATH while inside a file tree with a go.mod — defaults to modules behavior
 	// - GO111MODULE environment variable:
 	//     unset or auto — default behavior above
@@ -34,11 +34,13 @@ func ModEnabled(mx *mg.Ctx, srcDir string) bool {
 		return v
 	}
 
-	for _, gp := range PathList(bctx.GOPATH) {
-		p := filepath.Join(gp, "src")
-		if mgutil.IsParentDir(p, k.SrcDir) || k.SrcDir == p {
-			mx.Put(k, false)
-			return false
+	if v := Version; v.Major <= 1 && v.Minor <= 12 {
+		for _, gp := range PathList(bctx.GOPATH) {
+			p := filepath.Join(gp, "src")
+			if mgutil.IsParentDir(p, k.SrcDir) || k.SrcDir == p {
+				mx.Put(k, false)
+				return false
+			}
 		}
 	}
 
