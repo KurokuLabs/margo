@@ -2,10 +2,8 @@ package golang
 
 import (
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
-	"go/build"
 	"go/importer"
 	"go/parser"
 	"go/token"
@@ -44,8 +42,7 @@ const (
 )
 
 var (
-	mctl               *marGocodeCtl
-	errModNotSupported = errors.New("go mod not supported")
+	mctl *marGocodeCtl
 )
 
 func init() {
@@ -132,9 +129,10 @@ func (mgc *marGocodeCtl) importPathByName(pkgName, srcDir string) string {
 // newSrcImporter returns a new instance a source code importer
 func (mgc *marGocodeCtl) newSrcImporter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
 	return srcimporter.New(
+		mx,
 		overlay,
 
-		BuildContext(mx),
+		goutil.BuildContextWithoutCallbacks(mx),
 		token.NewFileSet(),
 		map[string]*types.Package{},
 	)
@@ -169,6 +167,8 @@ func (mgc *marGocodeCtl) preloadPackages(mx *mg.Ctx) {
 	if len(src) == 0 {
 		return
 	}
+
+	defer mx.Begin(mg.Task{Title: "Preloading packages in " + v.ShortFilename()}).Done()
 
 	fset := token.NewFileSet()
 	af, _ := parser.ParseFile(fset, v.Filename(), src, parser.ImportsOnly)
@@ -280,24 +280,13 @@ func (mgc *marGocodeCtl) scanVFS(mx *mg.Ctx, rootName, rootDir string) {
 	// TODO: (eventually) move this function into plst.Scan
 	// for now, the extra scan at the end is fast enough to not be worth the complexity
 	dir := filepath.Join(rootDir, "src")
-	title := "VFS.Scan " + rootName + " (" + dir + ")"
-	if h := mx.Env.Getenv("HOME", ""); h != "" {
-		sep := string(filepath.Separator)
-		title = strings.Replace(title, h+sep, "~"+sep, -1)
-	}
-	defer mx.Begin(mg.Task{Title: title, NoEcho: true}).Done()
+	tsk := mg.Task{Title: "VFS.Scan " + rootName + " ( " + mgutil.ShortFilename(rootDir) + " )"}
+	defer mx.Begin(tsk).Done()
 
-	type dent struct {
-		dir string
-		*vfs.Node
-	}
 	mu := sync.Mutex{}
 	pkgs := 0
-	load := func(d dent) {
-		if !d.SomeSuffix(".go") {
-			return
-		}
-		_, err := gopkg.ImportDir(mx, d.dir)
+	preload := func(nd *vfs.Node) {
+		_, err := gopkg.ImportDirNd(mx, nd)
 		if err != nil {
 			return
 		}
@@ -308,38 +297,27 @@ func (mgc *marGocodeCtl) scanVFS(mx *mg.Ctx, rootName, rootDir string) {
 	start := time.Now()
 	wg := &sync.WaitGroup{}
 	procs := runtime.NumCPU()
-	dents := make(chan dent, procs*1000)
+	dirs := make(chan *vfs.Node, procs*100)
 	proc := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 
-		for de := range dents {
-			load(de)
+		for de := range dirs {
+			preload(de)
 		}
 	}
 	for i := 0; i < procs; i++ {
 		wg.Add(1)
 		go proc(wg)
 	}
-	vfs.Root.Scan(dir, vfs.ScanOptions{
-		MaxDepth: -1,
-		Filter: func(de *vfs.Dirent) bool {
-			switch de.Name() {
-			case
-				"node_modules",
-				"testdata":
-				return false
-			}
-			return vfs.DefaultScanFilter(de)
-		},
-		Dirs: func(dir string, nd *vfs.Node) {
-			dents <- dent{dir, nd}
-		},
+	mx.VFS.Scan(dir, vfs.ScanOptions{
+		Filter: gopkg.ScanFilter,
+		Dirs:   func(nd *vfs.Node) { dirs <- nd },
 	})
-	close(dents)
+	close(dirs)
 	wg.Wait()
 	mgc.plst.Scan(mx, dir)
 	dur := mgpf.Since(start)
-	mx.Log.Printf("%s: %d packages preloaded in %s\n", title, pkgs, dur)
+	mx.Log.Printf("%s: %d packages preloaded in %s\n", tsk.Title, pkgs, dur)
 }
 
 func (mgc *marGocodeCtl) initPlst(mx *mg.Ctx) {
@@ -378,39 +356,14 @@ func (mgc *marGocodeCtl) pkgInfo(mx *mg.Ctx, impPath, srcDir string) (gsuPkgInfo
 		}
 	}()
 
-	if goutil.ModEnabled(mx, srcDir) {
-		for _, p := range mgc.plst.View().ByImportPath[impPath] {
-			if p.Standard {
-				return gsuPkgInfo{
-					Path: p.ImportPath,
-					Dir:  p.Dir,
-					Std:  true,
-				}, nil
-			}
-		}
-		return gsuPkgInfo{}, errModNotSupported
-	}
-
-	// TODO: move this into pkglst so it's available globally
-
-	// TODO: cache these ops?
-	// it might not be worth the added complexity since we will get a lot of impPath=io
-	// with a different srcPath which means we have to look it up anyway.
-	//
-	// TODO: support go modules
-	// at this time, go/packages appears to be extremely slow
-	// it takes 100ms+ just to load the errors packages in LoadFiles mode
-	//
-	// in eiter case, in go1.11 we might end up calling `go list` which is very slow
-
-	bpkg, err := BuildContext(mx).Import(impPath, srcDir, build.FindOnly)
+	p, err := gopkg.FindPkg(mx, impPath, srcDir)
 	if err != nil {
 		return gsuPkgInfo{}, err
 	}
 	return gsuPkgInfo{
-		Path: bpkg.ImportPath,
-		Dir:  bpkg.Dir,
-		Std:  bpkg.Goroot,
+		Path: p.ImportPath,
+		Dir:  p.Dir,
+		Std:  p.Goroot,
 	}, nil
 }
 

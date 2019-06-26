@@ -6,14 +6,19 @@ import (
 )
 
 type Pkg struct {
-	IsCommand     bool
 	ImportablePfx string
 
 	// The following fields are a subset of build.Package
 	Dir        string
 	Name       string
 	ImportPath string
-	Standard   bool
+	Goroot     bool
+}
+
+type PkgPath struct {
+	Dir        string
+	ImportPath string
+	Goroot     bool
 }
 
 var (
@@ -21,15 +26,17 @@ var (
 	vendorSepDir   = filepath.FromSlash("/vendor/")
 )
 
+func (p *Pkg) IsCommand() bool { return p.Name == "main" }
+
 func (p *Pkg) Importable(srcDir string) bool {
-	if p.IsCommand {
-		return false
-	}
-	if p.Dir == srcDir {
+	if p.ImportPath == "." || p.IsCommand() {
 		return false
 	}
 	if s := p.ImportablePfx; s != "" {
 		return strings.HasPrefix(srcDir, s) || srcDir == s[:len(s)-1]
+	}
+	if p.Dir == srcDir {
+		return false
 	}
 	return true
 }
@@ -46,8 +53,6 @@ func (p *Pkg) dirPfx(dir, slash string) string {
 
 func (p *Pkg) Finalize() {
 	p.Dir = filepath.Clean(p.Dir)
-	p.IsCommand = p.Name == "main"
-
 	// does importing from the 'vendor' and 'internal' dirs work the same?
 	// who cares... I'm the supreme, I make the rules in this outpost...
 	p.ImportablePfx = p.dirPfx(p.Dir, internalSepDir)

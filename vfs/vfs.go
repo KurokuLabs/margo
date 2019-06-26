@@ -1,170 +1,83 @@
 package vfs
 
 import (
-	"errors"
 	"fmt"
 	"github.com/karrick/godirwalk"
 	"io"
-	"margo.sh/mg"
+	"margo.sh/mgutil"
 	"os"
-	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	ErrPathIsNotAbsolute = errors.New("path is not absolute")
-
-	Root = New(Options{
-		Expires: func(*Node) time.Time {
-			return time.Now().Add(30 * time.Second)
-		},
-	})
+	asyncC = make(chan func(), 1000)
 )
 
-type Dirent = godirwalk.Dirent
-
-type Options struct {
-	Expires func(nd *Node) time.Time
+func init() {
+	go func() {
+		for f := range asyncC {
+			f()
+		}
+	}()
 }
+
+func async(f func()) {
+	select {
+	case asyncC <- f:
+	default:
+		go f()
+	}
+}
+
+// TODO: add .Trim() support to allow periodically removing unused leaf nodes to reduce memory.
 
 type ScanOptions struct {
 	Filter   func(de *Dirent) bool
-	Dirs     func(path string, nd *Node)
+	Dirs     func(nd *Node)
 	MaxDepth int
-	scratch  []byte
-}
 
-type fileInfo struct {
-	os.FileInfo
-	expires int64
-}
-
-func (fi *fileInfo) setExpires(t time.Time) {
-	fi.expires = t.UnixNano()
-}
-
-func (fi *fileInfo) expired() bool {
-	if fi.expires <= 0 {
-		return false
-	}
-	return time.Now().UnixNano() >= fi.expires
-}
-
-type dirents struct {
-	path string
-	ents []*Dirent
+	scratch []byte
 }
 
 type FS struct{ Node }
 
-func New(o Options) *FS {
-	fs := &FS{}
-	fs.opts = &o
-	return fs
+func New() *FS {
+	return &FS{}
 }
 
-func (fs *FS) Peek(path string) *Node { return fs.peek(PathComponents(path)) }
+func (fs *FS) Invalidate(path string) { fs.Peek(path).Invalidate() }
 
-func (fs *FS) Poke(path string, mode os.FileMode) *Node { return fs.poke(PathComponents(path)) }
+func (fs *FS) Stat(path string) (*Node, os.FileInfo, error) {
+	nd := fs.Poke(path)
+	fi, err := nd.Stat()
+	return nd, fi, err
+}
 
-func (fs *FS) Remove(path string) { fs.Peek(path).Remove() }
+func (fs *FS) ReadDir(path string) ([]os.FileInfo, error) { return fs.Poke(path).ReadDir() }
 
-func (fs *FS) Stat(path string) (os.FileInfo, error) { return fs.Poke(path, 0).Stat() }
+func (fs *FS) IsDir(path string) bool { return fs.Poke(path).IsDir() }
 
-func (fs *FS) KV(path string) (mg.KVStore, error) { return fs.Poke(path, 0).KV() }
+func (fs *FS) Memo(path string) (*Node, *mgutil.Memo, error) {
+	nd := fs.Poke(path)
+	m, err := nd.Memo()
+	return nd, m, err
+}
 
-func (fs *FS) StatKV(path string) (mg.KVStore, os.FileInfo, error) { return fs.Poke(path, 0).StatKV() }
-
-func (fs *FS) Scan(path string, so ScanOptions) error {
-	if !filepath.IsAbs(path) {
-		return ErrPathIsNotAbsolute
-	}
+func (fs *FS) Scan(path string, so ScanOptions) {
 	so.scratch = make([]byte, godirwalk.DefaultScratchBufferSize)
-	if so.Filter == nil {
-		so.Filter = DefaultScanFilter
-	}
-	fs.Poke(path, os.ModeDir).scan(path, so)
-	return nil
-}
-
-type NodeList []*Node
-
-func (nl NodeList) Len() int           { return len(nl) }
-func (nl NodeList) Less(i, j int) bool { return nl[i].Name() < nl[j].Name() }
-func (nl NodeList) Swap(i, j int)      { nl[i], nl[j] = nl[j], nl[i] }
-
-func (nl NodeList) Copy() NodeList { return append(NodeList(nil), nl...) }
-
-func (nl NodeList) Child(name string) *Node {
-	_, c := nl.Find(name)
-	return c
-}
-
-func (nl NodeList) Find(name string) (index int, c *Node) {
-	for i, c := range nl {
-		if c.name == name {
-			return i, c
-		}
-	}
-	return -1, nil
-}
-
-func (nl NodeList) Index(nd *Node) (index int) {
-	for i, c := range nl {
-		if c == nd {
-			return i
-		}
-	}
-	return -1
-}
-
-func (nl NodeList) Remove(nd *Node) {
-	i := nl.Index(nd)
-	if i < 0 {
-		return
-	}
-	nl[i] = nl[len(nl)-1]
-	nl[len(nl)-1] = nil
-	nl = nl[:len(nl)-1]
+	fs.Poke(path).scan(path, &so, 0)
 }
 
 type Node struct {
 	parent *Node
-	opts   *Options
 	name   string
 
-	mu sync.RWMutex
-	fi *fileInfo
-	kv *mg.KVMap
-	cl NodeList
-}
-
-func (nd *Node) SomePrefix(pfx string) bool {
-	return nd.Some(func(nd *Node) bool { return strings.HasPrefix(nd.name, pfx) })
-}
-
-func (nd *Node) SomeSuffix(sfx string) bool {
-	return nd.Some(func(nd *Node) bool { return strings.HasSuffix(nd.name, sfx) })
-}
-
-func (nd *Node) Some(f func(nd *Node) bool) bool {
-	if nd == nil {
-		return false
-	}
-
-	nd.mu.RLock()
-	defer nd.mu.RUnlock()
-
-	for _, c := range nd.cl {
-		if f(c) {
-			return true
-		}
-	}
-	return false
+	mu sync.Mutex
+	cl *NodeList
+	mt *meta
 }
 
 func (nd *Node) String() string {
@@ -178,17 +91,18 @@ func (nd *Node) String() string {
 }
 
 func (nd *Node) Name() string {
-	if nd != nil {
-		return nd.name
+	if nd == nil {
+		return ""
 	}
-	return ""
+	return nd.name
 }
 
 func (nd *Node) IsLeaf() bool {
-	if nd != nil {
-		return !nd.IsBranch()
+	// if nd is nil, it's neither a branch nor a leaf
+	if nd == nil {
+		return false
 	}
-	return false
+	return !nd.IsBranch()
 }
 
 func (nd *Node) IsBranch() bool {
@@ -196,17 +110,19 @@ func (nd *Node) IsBranch() bool {
 		return false
 	}
 
-	nd.mu.RLock()
-	defer nd.mu.RUnlock()
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
 
-	return len(nd.cl) != 0
+	return nd.isBranch()
 }
 
+func (nd *Node) isBranch() bool { return nd.cl.Len() != 0 }
+
 func (nd *Node) Parent() *Node {
-	if nd != nil {
-		return nd.parent
+	if nd == nil {
+		return nil
 	}
-	return nil
+	return nd.parent
 }
 
 func (nd *Node) IsDescendant(ancestor *Node) bool {
@@ -221,197 +137,164 @@ func (nd *Node) IsDescendant(ancestor *Node) bool {
 	return false
 }
 
-func (nd *Node) Branches(f func(path string, nd *Node)) {
-	nd.branches("", f)
-}
-
-func (nd *Node) scanEnts(dl []*Dirent) (dirs []*Node) {
-	cl := make([]*Node, 0, len(dl))
-	for _, de := range dl {
-		name, mode := de.Name(), de.ModeType()
-		c := nd.cl.Child(name)
-		if c == nil || !nd.modeEq(mode) {
-			c = nd.mkNode(name, nil)
-		}
-		cl = append(cl, c)
-		if de.IsDir() {
-			dirs = append(dirs, c)
+func (nd *Node) scanEnts(so *ScanOptions, dl []*godirwalk.Dirent) (dirs []*Node) {
+	finalize := func(nd *Node, de *godirwalk.Dirent) {
+		mt := nd.meta()
+		mt.resetInfo(de.ModeType(), time.Time{})
+		if so.Dirs != nil && mt.fmode.IsDir() {
+			dirs = append(dirs, nd)
 		}
 	}
-	nd.cl = cl
+	cl := make([]*Node, 0, len(dl))
+	for _, de := range dl {
+		c := nd.cl.Node(de.Name())
+		if c == nil {
+			c = nd.mkNode(de.Name())
+			finalize(c, de)
+		} else {
+			c.mu.Lock()
+			finalize(c, de)
+			c.mu.Unlock()
+		}
+		cl = append(cl, c)
+	}
+	nd.cl = &NodeList{l: cl}
 	return dirs
 }
 
-func (nd *Node) readDir(root string, so ScanOptions) []*Dirent {
+func (nd *Node) readDirents(root string, so *ScanOptions) []*godirwalk.Dirent {
 	l, _ := godirwalk.ReadDirents(root, so.scratch)
 	if so.Filter == nil || len(l) == 0 {
 		return l
 	}
 	ents := l[:0]
 	for _, de := range l {
-		if so.Filter(de) {
+		if so.Filter(&Dirent{name: de.Name(), fmode: fmode(de.ModeType())}) {
 			ents = append(ents, de)
 		}
 	}
 	return ents
 }
 
-func (nd *Node) scan(root string, so ScanOptions) {
-	if so.MaxDepth == 0 {
-		return
-	}
-	so.MaxDepth--
-
-	ents := nd.readDir(root, so)
+func (nd *Node) scan(root string, so *ScanOptions, depth int) {
+	ents := nd.readDirents(root, so)
 
 	nd.mu.Lock()
-	dirs := nd.scanEnts(ents)
+	dirs := nd.scanEnts(so, ents)
 	nd.mu.Unlock()
 
 	if so.Dirs != nil {
-		so.Dirs(root, nd)
+		so.Dirs(nd)
 	}
 
+	depth++
+	if so.MaxDepth > 0 && depth >= so.MaxDepth {
+		return
+	}
+	root += string(filepath.Separator)
 	for _, c := range dirs {
-		c.scan(filepath.Join(root, c.name), so)
+		c.scan(root+c.name, so, depth)
 	}
 }
 
-func (nd *Node) branches(root string, f func(path string, nd *Node)) {
+func (nd *Node) Branches(f func(nd *Node)) {
 	if nd == nil {
 		return
 	}
 
 	cl := nd.Children()
-
-	if len(cl) == 0 {
+	if cl.Len() == 0 {
 		return
 	}
 
-	if root == "" {
-		// we're the origin node, we can't call f
-		root = nd.Path()
-	} else {
-		f(root, nd)
-	}
-
-	for _, c := range cl {
-		c.branches(filepath.Join(root, c.name), f)
+	f(nd)
+	for _, c := range cl.Nodes() {
+		c.Branches(f)
 	}
 }
 
 func (nd *Node) Path() string {
-	if nd == nil {
+	str := strings.Builder{}
+	var walk func(*Node, int)
+	walk = func(nd *Node, n int) {
+		if nd.IsRoot() {
+			str.Grow(n)
+			return
+		}
+		walk(nd.parent, n+1+len(nd.name))
+		str.WriteByte(filepath.Separator)
+		str.WriteString(nd.name)
+	}
+	walk(nd, 0)
+
+	if str.Len() == 0 {
+		if filepath.Separator == '/' {
+			return "/"
+		}
 		return ""
 	}
 
-	sep := string(filepath.Separator)
-	pth := nd.name
-	for p := nd.parent; !p.IsRoot(); p = p.parent {
-		pth = p.name + sep + pth
-	}
-	if sep == "/" {
-		pth = sep + pth
+	pth := str.String()
+	if c := byte(filepath.Separator); c != '/' && pth[0] == c {
+		pth = pth[1:]
 	}
 	return pth
 }
 
-func (nd *Node) Remove() {
-	if nd.IsRoot() {
-		return
-	}
-
-	p := nd.parent
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.cl.Remove(nd)
-}
-
 func (nd *Node) IsRoot() bool { return nd == nil || nd.parent == nil }
 
-func (nd *Node) peek(path []string) *Node {
-	if nd == nil || len(path) == 0 {
-		return nd
-	}
-	name, path := path[0], path[1:]
-	return nd.cl.Child(name).peek(path)
-}
-
-func (nd *Node) assertPoke() {
+func (nd *Node) Peek(path string) *Node {
 	if nd == nil {
-		panic("poke* called a nil node")
+		return nil
 	}
-}
-
-func (nd *Node) poke(path []string) *Node {
-	nd.assertPoke()
-
-	if len(path) == 0 {
+	name, path := splitPath(path)
+	if name == "" {
 		return nd
 	}
-	name, path := path[0], path[1:]
-	nd = nd.touch(name, nil)
-	if len(path) == 0 {
-		return nd
-	}
-	return nd.poke(path)
+
+	nd.mu.Lock()
+	c := nd.cl.Node(name)
+	nd.mu.Unlock()
+
+	return c.Peek(path)
 }
 
-func (nd *Node) touch(name string, fi os.FileInfo) *Node {
-	nd.assertPoke()
+func (nd *Node) Poke(path string) *Node {
+	if nd == nil {
+		panic("Poke() called on a nil Node")
+	}
+	name, rest := splitPath(path)
+	if name == "" {
+		return nd
+	}
+	return nd.touch(name).Poke(rest)
+}
 
+func (nd *Node) touch(name string) *Node {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	i, c := nd.cl.Find(name)
-	if c != nil && (fi == nil || !c.modeEq(fi.Mode())) {
+	if c := nd.cl.Node(name); c != nil {
 		return c
 	}
 
-	c = nd.mkNode(name, fi)
-	if i >= 0 {
-		nd.cl[i] = c
-	} else {
-		nd.cl = append(nd.cl, c)
-	}
+	c := nd.mkNode(name)
+	nd.cl = nd.cl.Add(c)
 	return c
 }
 
-func (nd *Node) modeEq(p os.FileMode) bool {
-	q := nd.mode()
-	switch {
-	case p == 0, q == 0, p == q:
-		return true
-	case p.IsDir() == q.IsDir():
-		return true
-	case p&os.ModeSymlink != 0:
-		return true
-	}
-	return false
+func (nd *Node) mkNode(name string) *Node {
+	return &Node{parent: nd, name: name}
 }
 
-func (nd *Node) mode() os.FileMode {
-	switch {
-	case nd == nil:
-		return 0
-	case nd.fi != nil:
-		return nd.fi.Mode()
-	case len(nd.cl) != 0:
-		return os.ModeDir
+func (nd *Node) meta() *meta {
+	if nd.mt == nil {
+		nd.mt = &meta{}
 	}
-	return 0
+	return nd.mt
 }
 
-func (nd *Node) mkNode(name string, fi os.FileInfo) *Node {
-	return &Node{
-		parent: nd,
-		opts:   nd.opts,
-		name:   name,
-	}
-}
-
-func (nd *Node) Children() NodeList {
+func (nd *Node) Ls() *NodeList {
 	if nd == nil {
 		return nil
 	}
@@ -419,7 +302,19 @@ func (nd *Node) Children() NodeList {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	return nd.cl.Copy()
+	nd.sync()
+	return nd.cl
+}
+
+func (nd *Node) Children() *NodeList {
+	if nd == nil {
+		return nil
+	}
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	return nd.cl
 }
 
 func (nd *Node) Print(w io.Writer) {
@@ -441,17 +336,19 @@ func (nd *Node) print(w io.Writer, filter func(*Node) string, indent string) {
 	endInd := indent + "  "
 
 	cl := nd.Children()
-	if nd.IsRoot() && len(cl) == 1 && cl[0].name == "" {
-		cl = cl[0].Children()
+	if nd.IsRoot() && cl.Len() == 1 {
+		if nl := cl.Nodes(); nl[0].name == "" {
+			cl = nl[0].Children()
+		}
 	}
-	sort.Sort(cl)
+	cl = cl.Sorted()
 
 	type C struct {
 		*Node
 		s string
 	}
-	l := make([]C, 0, len(cl))
-	for _, c := range cl {
+	l := make([]C, 0, cl.Len())
+	for _, c := range cl.Nodes() {
 		if s := filter(c); s != "" {
 			l = append(l, C{c, s})
 		}
@@ -466,27 +363,30 @@ func (nd *Node) print(w io.Writer, filter func(*Node) string, indent string) {
 	}
 }
 
-func (nd *Node) KV() (mg.KVStore, error) {
-	kv, _, err := nd.StatKV()
-	return kv, err
-}
-
-func (nd *Node) StatKV() (mg.KVStore, os.FileInfo, error) {
+func (nd *Node) Memo() (*mgutil.Memo, error) {
 	if nd == nil {
-		return nil, nil, os.ErrNotExist
+		return nil, os.ErrNotExist
 	}
 
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	fi, err := nd.stat()
+	mt, err := nd.sync()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if nd.kv == nil {
-		nd.kv = &mg.KVMap{}
+	return mt.memo(), nil
+}
+
+func (nd *Node) Invalidate() {
+	if nd == nil {
+		return
 	}
-	return nd.kv, fi, nil
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	nd.mt.invalidate()
 }
 
 func (nd *Node) Stat() (os.FileInfo, error) {
@@ -497,48 +397,115 @@ func (nd *Node) Stat() (os.FileInfo, error) {
 	nd.mu.Lock()
 	defer nd.mu.Unlock()
 
-	return nd.stat()
-}
-
-func (nd *Node) stat() (os.FileInfo, error) {
-	if fi := nd.fi; fi != nil && !fi.expired() {
-		return fi.FileInfo, nil
-	}
-
-	fi, err := os.Stat(nd.Path())
-	// only reset if the mtime changed
-	reset := fi == nil || nd.fi == nil || !nd.fi.ModTime().Equal(fi.ModTime())
-	if reset && nd.kv != nil {
-		nd.kv.Clear()
-	}
-
+	mt, err := nd.sync()
 	if err != nil {
-		nd.fi = nil
-		nd.cl = nil
 		return nil, err
 	}
-
-	if reset && fi.IsDir() {
-		nd.scanEnts(nd.readDir(nd.Path(), ScanOptions{}))
-	}
-
-	nd.fi = &fileInfo{FileInfo: fi}
-	if exp := nd.opts.Expires; exp != nil {
-		nd.fi.setExpires(exp(nd))
+	fi := &FileInfo{Node: nd, fmode: mt.fmode}
+	if !fi.fmode.IsValid() && nd.cl.Len() != 0 {
+		fi.fmode = fmodeDir
 	}
 	return fi, nil
 }
 
-func PathComponents(p string) []string {
-	p = filepath.ToSlash(p)
-	p = path.Clean(p)
-	if filepath.Separator == '/' {
-		p = strings.TrimPrefix(p, "/")
+func (nd *Node) sync() (*meta, error) {
+	mt := nd.meta()
+	if mt.ok() {
+		return mt, nil
 	}
-	return strings.Split(p, "/")
+	path := nd.Path()
+	fi, err := os.Stat(path)
+	reset := fi == nil || !mt.fmode.IsValid() || mt.modts != tsTime(fi.ModTime())
+	if reset {
+		mt.resetMemo()
+	}
+	// if a file in a directory changed, the dir's memo is cleared as well because
+	// a dir's memo is primarily used to store pkg/dir data that depends on the file
+	if reset && !nd.isBranch() {
+		nd.resetParent()
+	}
+	if err != nil {
+		mt.invalidate()
+		nd.cl = nil
+		return nil, err
+	}
+	mt.resetInfo(fi.Mode(), fi.ModTime())
+	if reset && fi.IsDir() {
+		so := &ScanOptions{MaxDepth: 1}
+		nd.scanEnts(so, nd.readDirents(path, so))
+	}
+	return mt, nil
 }
 
-func DefaultScanFilter(de *Dirent) bool {
-	nm := de.Name()
-	return nm != "" && nm[0] != '.' && nm[0] != '_'
+func (nd *Node) resetParent() {
+	p := nd.Parent()
+	if p == nil {
+		return
+	}
+	ts := tsNow()
+	async(func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.mt.resetMemoAfter(ts)
+	})
+}
+
+func (nd *Node) IsDir() bool {
+	if nd == nil {
+		return false
+	}
+
+	nd.mu.Lock()
+	defer nd.mu.Unlock()
+
+	mt, err := nd.sync()
+	return err == nil && mt.fmode.IsDir()
+}
+
+func (nd *Node) ReadDir() ([]os.FileInfo, error) {
+	if nd == nil {
+		return nil, os.ErrNotExist
+	}
+
+	nd.mu.Lock()
+	_, err := nd.sync()
+	cl := nd.cl
+	nd.mu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	l := make([]os.FileInfo, 0, cl.Len())
+	for _, c := range cl.Nodes() {
+		if fi, err := c.Stat(); err == nil {
+			l = append(l, fi)
+		}
+	}
+	return l, nil
+}
+
+func (nd *Node) Locate(name string) (*Node, os.FileInfo, error) {
+	c := nd.touch(name)
+	if fi, err := c.Stat(); err == nil {
+		return c, fi, err
+	}
+	if nd.IsRoot() {
+		return nil, nil, os.ErrNotExist
+	}
+	return nd.parent.Locate(name)
+}
+
+func isSep(r byte) bool { return r == '/' || r == '\\' }
+
+func splitPath(p string) (head, tail string) {
+	for p != "" && isSep(p[0]) {
+		p = p[1:]
+	}
+	for i := 0; i < len(p); i++ {
+		if isSep(p[i]) {
+			return p[:i], p[i:]
+		}
+	}
+	return p, ""
 }
