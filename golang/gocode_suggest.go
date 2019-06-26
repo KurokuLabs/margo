@@ -179,7 +179,7 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 	}()
 
 	defImpr := newDefImpr(gi.mx, gi)
-	pkg, err = gi.importFrom(defImpr, k, mode)
+	pkg, err = gi.importFrom(defImpr, k, srcDir, mode)
 	complete := err == nil && pkg.Complete()
 	if complete {
 		return pkg, nil
@@ -213,7 +213,7 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 	// but we were already not going to return anything, so it *shouldn't* apply here
 
 	fbkImpr := newFbkImpr(gi.mx, gi)
-	fbkPkg, fbkErr := gi.importFrom(fbkImpr, k.fallback(), mode)
+	fbkPkg, fbkErr := gi.importFrom(fbkImpr, k.fallback(), srcDir, mode)
 	fbkComplete := fbkErr == nil && fbkPkg.Complete()
 	switch {
 	case fbkComplete:
@@ -229,7 +229,25 @@ func (gi *gsuImporter) ImportFrom(impPath, srcDir string, mode types.ImportMode)
 	return pkg, err
 }
 
-func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, k mgcCacheKey, mode types.ImportMode) (*types.Package, error) {
+func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, ck mgcCacheKey, srcDir string, mode types.ImportMode) (*types.Package, error) {
+	_, memo, err := gi.mx.VFS.Memo(ck.Dir)
+	if err != nil {
+		return nil, err
+	}
+	type K struct{ mgcCacheKey }
+	type V struct {
+		p *types.Package
+		e error
+	}
+	k := K{ck}
+	v := memo.Read(k, func() interface{} {
+		p, err := gi.doImportFrom(underlying, ck, srcDir, mode)
+		return V{p: p, e: err}
+	}).(V)
+	return v.p, v.e
+}
+
+func (gi *gsuImporter) doImportFrom(underlying types.ImporterFrom, k mgcCacheKey, srcDir string, mode types.ImportMode) (*types.Package, error) {
 	defer gi.mx.Profile.Push("gsuImport: " + k.Path).Pop()
 
 	if k.Std && k.Path == "unsafe" {
@@ -241,7 +259,7 @@ func (gi *gsuImporter) importFrom(underlying types.ImporterFrom, k mgcCacheKey, 
 	}
 
 	impStart := time.Now()
-	pkg, err := underlying.ImportFrom(k.Path, k.Dir, mode)
+	pkg, err := underlying.ImportFrom(k.Path, srcDir, mode)
 	impDur := time.Since(impStart)
 
 	if err == nil {
