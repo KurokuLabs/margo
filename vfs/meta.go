@@ -12,6 +12,7 @@ const (
 	fmodeDir     = fmode(os.ModeDir)
 	fmodeSymlink = fmode(os.ModeSymlink)
 	fmodeType    = fmode(os.ModeType)
+	metaMaxAge   = 17
 )
 
 var (
@@ -60,8 +61,11 @@ func (mt *meta) ok() bool {
 	return mt != nil && mt.expts > 0 && mt.fmode.IsValid() && tsNow() < mt.expts
 }
 
-func (mt *meta) resetMemo() {
+func (mt *meta) resetMemoAfter(ts timestamp) {
 	if mt == nil {
+		return
+	}
+	if ts > 0 && mt.modts >= ts {
 		return
 	}
 	if mo := mt.mo; mo != nil {
@@ -69,9 +73,13 @@ func (mt *meta) resetMemo() {
 	}
 }
 
+func (mt *meta) resetMemo() {
+	mt.resetMemoAfter(0)
+}
+
 func (mt *meta) resetInfo(mode os.FileMode, mtime time.Time) {
 	now := tsNow()
-	mt.expts = now + 17
+	mt.expts = now + metaMaxAge
 	mt.fmode = fmode(mode)
 	switch {
 	case !mtime.IsZero():

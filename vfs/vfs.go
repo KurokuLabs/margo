@@ -12,6 +12,26 @@ import (
 	"time"
 )
 
+var (
+	asyncC = make(chan func(), 1000)
+)
+
+func init() {
+	go func() {
+		for f := range asyncC {
+			f()
+		}
+	}()
+}
+
+func async(f func()) {
+	select {
+	case asyncC <- f:
+	default:
+		go f()
+	}
+}
+
 // TODO: add .Trim() support to allow periodically removing unused leaf nodes to reduce memory.
 
 type ScanOptions struct {
@@ -19,7 +39,6 @@ type ScanOptions struct {
 	Dirs     func(nd *Node)
 	MaxDepth int
 
-	depth   int
 	scratch []byte
 }
 
@@ -49,7 +68,7 @@ func (fs *FS) Memo(path string) (*Node, *mgutil.Memo, error) {
 
 func (fs *FS) Scan(path string, so ScanOptions) {
 	so.scratch = make([]byte, godirwalk.DefaultScratchBufferSize)
-	fs.Poke(path).scan(path, &so)
+	fs.Poke(path).scan(path, &so, 0)
 }
 
 type Node struct {
@@ -157,7 +176,7 @@ func (nd *Node) readDirents(root string, so *ScanOptions) []*godirwalk.Dirent {
 	return ents
 }
 
-func (nd *Node) scan(root string, so *ScanOptions) {
+func (nd *Node) scan(root string, so *ScanOptions, depth int) {
 	ents := nd.readDirents(root, so)
 
 	nd.mu.Lock()
@@ -168,13 +187,13 @@ func (nd *Node) scan(root string, so *ScanOptions) {
 		so.Dirs(nd)
 	}
 
-	so.depth++
-	if so.MaxDepth > 0 && so.depth >= so.MaxDepth {
+	depth++
+	if so.MaxDepth > 0 && depth >= so.MaxDepth {
 		return
 	}
 	root += string(filepath.Separator)
 	for _, c := range dirs {
-		c.scan(root+c.name, so)
+		c.scan(root+c.name, so, depth)
 	}
 }
 
@@ -232,7 +251,12 @@ func (nd *Node) Peek(path string) *Node {
 	if name == "" {
 		return nd
 	}
-	return nd.cl.Node(name).Peek(path)
+
+	nd.mu.Lock()
+	c := nd.cl.Node(name)
+	nd.mu.Unlock()
+
+	return c.Peek(path)
 }
 
 func (nd *Node) Poke(path string) *Node {
@@ -397,10 +421,8 @@ func (nd *Node) sync() (*meta, error) {
 	}
 	// if a file in a directory changed, the dir's memo is cleared as well because
 	// a dir's memo is primarily used to store pkg/dir data that depends on the file
-	if p := nd.parent; reset && !nd.isBranch() && p != nil {
-		p.mu.Lock()
-		p.mt.resetMemo()
-		p.mu.Unlock()
+	if reset && !nd.isBranch() {
+		nd.resetParent()
 	}
 	if err != nil {
 		mt.invalidate()
@@ -413,6 +435,19 @@ func (nd *Node) sync() (*meta, error) {
 		nd.scanEnts(so, nd.readDirents(path, so))
 	}
 	return mt, nil
+}
+
+func (nd *Node) resetParent() {
+	p := nd.Parent()
+	if p == nil {
+		return
+	}
+	ts := tsNow()
+	async(func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.mt.resetMemoAfter(ts)
+	})
 }
 
 func (nd *Node) IsDir() bool {
@@ -448,6 +483,17 @@ func (nd *Node) ReadDir() ([]os.FileInfo, error) {
 		}
 	}
 	return l, nil
+}
+
+func (nd *Node) Locate(name string) (*Node, os.FileInfo, error) {
+	c := nd.touch(name)
+	if fi, err := c.Stat(); err == nil {
+		return c, fi, err
+	}
+	if nd.IsRoot() {
+		return nil, nil, os.ErrNotExist
+	}
+	return nd.parent.Locate(name)
 }
 
 func isSep(r byte) bool { return r == '/' || r == '\\' }

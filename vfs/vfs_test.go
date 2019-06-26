@@ -40,7 +40,7 @@ func TestPeekPoke(t *testing.T) {
 	if nd == nil {
 		t.Fatal("Poke returned nil")
 	}
-	if fs.Peek(testPath).mu != nd.mu {
+	if fs.Peek(testPath) != nd {
 		t.Fatalf("Peek failed to find poked node %p", fs.Peek(testPath))
 	}
 	if fs.Poke(testPath) != nd {
