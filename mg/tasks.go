@@ -56,6 +56,9 @@ type taskTracker struct {
 }
 
 func (tr *taskTracker) RInit(mx *Ctx) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
 	tr.dispatch = mx.Store.Dispatch
 }
 
