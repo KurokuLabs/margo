@@ -292,9 +292,13 @@ func (tr *taskTracker) Begin(o Task) *TaskTicket {
 	}
 
 	tr.id++
+	id := fmt.Sprintf("@%d", tr.id)
+	if o.CancelID == "" {
+		o.CancelID = id
+	}
 	t := &TaskTicket{
 		Task:    o,
-		ID:      fmt.Sprintf("@%d", tr.id),
+		ID:      id,
 		Start:   time.Now(),
 		tracker: tr,
 	}
