@@ -5,6 +5,10 @@ var (
 	SecondaryDigits = DigitDisplay{'🄋', '➀', '➁', '➂', '➃', '➄', '➅', '➆', '➇', '➈'}
 )
 
+type RuneWriter interface {
+	WriteRune(rune) (int, error)
+}
+
 type DigitDisplay []rune
 
 func (p DigitDisplay) Draw(n int, f func(rune)) {
@@ -16,4 +20,8 @@ func (p DigitDisplay) Draw(n int, f func(rune)) {
 	m := n / base
 	p.Draw(m, f)
 	f(p[n-m*base])
+}
+
+func (p DigitDisplay) DrawInto(n int, w RuneWriter) {
+	p.Draw(n, func(r rune) { w.WriteRune(r) })
 }

@@ -241,7 +241,7 @@ func (tr *taskTracker) render() string {
 	if now.Second()%2 == 0 || !showAnim {
 		digits = mgutil.PrimaryDigits
 	}
-	digits.Draw(len(tr.tickets), func(r rune) { tr.buf.WriteRune(r) })
+	digits.DrawInto(len(tr.tickets), &tr.buf)
 	if title != "" {
 		tr.buf.WriteByte(' ')
 		tr.buf.WriteString(title)
