@@ -2,6 +2,7 @@ package gopkg
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/rogpeppe/go-internal/modfile"
 	"github.com/rogpeppe/go-internal/module"
@@ -15,6 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+)
+
+var (
+	pkgModFilepath     = string(filepath.Separator) + "pkg" + string(filepath.Separator) + "mod" + string(filepath.Separator)
+	errPkgPathNotFound = errors.New("pkg path not found")
 )
 
 func ScanFilter(de *vfs.Dirent) bool {
@@ -113,6 +119,9 @@ func FindPkg(mx *mg.Ctx, importPath, srcDir string) (*PkgPath, error) {
 	if goutil.ModEnabled(mx, srcDir) {
 		return findPkgGm(mx, importPath, srcDir)
 	}
+	if p, err := findPkgPm(mx, importPath, srcDir); err == nil {
+		return p, nil
+	}
 	return findPkgGp(mx, bctx, importPath, srcDir)
 }
 
@@ -143,6 +152,40 @@ func findPkgGp(mx *mg.Ctx, bctx *build.Context, importPath, srcDir string) (*Pkg
 		return v
 	}).(V)
 	return v.p, v.e
+}
+
+func findPkgPm(mx *mg.Ctx, importPath, srcDir string) (*PkgPath, error) {
+	srcDir = filepath.Clean(srcDir)
+	pmPos := strings.Index(srcDir, pkgModFilepath)
+	if pmPos < 0 {
+		return nil, errPkgPathNotFound
+	}
+	vPos := strings.Index(srcDir[pmPos:], "@v")
+	if vPos < 0 {
+		return nil, errPkgPathNotFound
+	}
+	vPos += pmPos
+	modDir := srcDir
+	if i := strings.IndexByte(srcDir[vPos:], filepath.Separator); i >= 0 {
+		modDir = srcDir[:vPos+i]
+	}
+	mod := filepath.ToSlash(modDir[pmPos+len(pkgModFilepath) : vPos])
+	sfx := strings.TrimPrefix(importPath, mod)
+	if sfx != "" && sfx[0] != '/' {
+		return nil, errPkgPathNotFound
+	}
+	ver := modDir[vPos+1:]
+	if !semver.IsValid(ver) {
+		return nil, errPkgPathNotFound
+	}
+	dir := filepath.Join(modDir, filepath.ToSlash(sfx))
+	if !mx.VFS.Poke(dir).Ls().Some(pkgNdFilter) {
+		return nil, errPkgPathNotFound
+	}
+	return &PkgPath{
+		Dir:        dir,
+		ImportPath: importPath,
+	}, nil
 }
 
 func findPkgGm(mx *mg.Ctx, importPath, srcDir string) (*PkgPath, error) {
