@@ -265,9 +265,9 @@ func (re *issueStatusSupport) Reduce(mx *Ctx) *State {
 		rem   int
 	}
 	cfgs := map[IssueTag]*Cfg{
-		Error:   {title: "Errors"},
+		Error:   {title: "Error"},
 		Warning: {title: "Warning"},
-		Notice:  {title: "Notices"},
+		Notice:  {title: "Notice"},
 	}
 
 	msg := ""
@@ -311,11 +311,11 @@ func (re *issueStatusSupport) Reduce(mx *Ctx) *State {
 		if cfg.loc == 0 {
 			loc, rem = rem, loc
 		}
-		loc.DrawInto(cfg.loc, &re.buf)
-		re.buf.WriteByte('/')
-		rem.DrawInto(cfg.rem, &re.buf)
-		re.buf.WriteByte(' ')
 		re.buf.WriteString(cfg.title)
+		re.buf.WriteByte(' ')
+		loc.DrawInto(cfg.loc, &re.buf)
+		re.buf.WriteRune('ꞏ')
+		rem.DrawInto(cfg.rem, &re.buf)
 		status = append(status, re.buf.String())
 	}
 	st := mx.State.AddHUD(
