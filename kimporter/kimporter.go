@@ -1,16 +1,18 @@
 package kimporter
 
 import (
+	"encoding/hex"
 	"fmt"
-	"go/ast"
 	"go/build"
 	"go/token"
 	"go/types"
+	"golang.org/x/crypto/blake2b"
 	"margo.sh/golang/gopkg"
 	"margo.sh/golang/goutil"
 	"margo.sh/mg"
+	"margo.sh/mgutil"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -25,6 +27,13 @@ type stateKey struct {
 	CheckFuncs   bool
 	CheckImports bool
 	ImportC      bool
+	Tests        bool
+	Tags         string
+	GOARCH       string
+	GOOS         string
+	GOROOT       string
+	GOPATH       string
+	SrcMapHash   string
 }
 
 type stateCache struct {
@@ -89,6 +98,7 @@ type Importer struct {
 	par *Importer
 
 	mu       *sync.Mutex
+	tags     string
 	imported map[stateKey]bool
 }
 
@@ -97,6 +107,7 @@ func (kp *Importer) Import(path string) (*types.Package, error) {
 }
 
 func (kp *Importer) ImportFrom(ipath, srcDir string, mode types.ImportMode) (*types.Package, error) {
+	// TODO: add support for unsaved-files without a package
 	if mode != 0 {
 		panic("non-zero import mode")
 	}
@@ -122,6 +133,21 @@ func (kp *Importer) copy() *Importer {
 }
 
 func (kp *Importer) stateKey(pp *gopkg.PkgPath) stateKey {
+	smHash := ""
+	if len(kp.SrcMap) != 0 {
+		fns := make(sort.StringSlice, len(kp.SrcMap))
+		for fn, _ := range kp.SrcMap {
+			fns = append(fns, fn)
+		}
+		fns.Sort()
+		b2, _ := blake2b.New256(nil)
+		for _, fn := range fns {
+			b2.Write([]byte(fn))
+			b2.Write(kp.SrcMap[fn])
+		}
+		smHash = hex.EncodeToString(b2.Sum(nil))
+	}
+
 	// user settings don't apply when checking deps
 	userSettings := kp.par == nil
 	return stateKey{
@@ -130,6 +156,13 @@ func (kp *Importer) stateKey(pp *gopkg.PkgPath) stateKey {
 		CheckFuncs:   userSettings && kp.CheckFuncs,
 		CheckImports: userSettings && kp.CheckImports,
 		ImportC:      userSettings && kp.ImportC,
+		Tests:        strings.HasSuffix(kp.mx.View.Name, "_test.go"),
+		Tags:         kp.tags,
+		GOOS:         kp.bld.GOOS,
+		GOARCH:       kp.bld.GOARCH,
+		GOROOT:       kp.bld.GOROOT,
+		SrcMapHash:   smHash,
+		GOPATH:       strings.Join(mgutil.PathList(kp.bld.GOPATH), string(filepath.ListSeparator)),
 	}
 }
 
@@ -171,20 +204,15 @@ func (kp *Importer) check(sk stateKey, st *state, pp *gopkg.PkgPath) (*types.Pac
 		return st.result()
 	}
 
-	bld := kp.bld
-	if pp.ImportPath == "syscall/js" {
-		x := *bld
-		x.BuildTags = append(x.BuildTags[:len(x.BuildTags):len(x.BuildTags)], "js", "wasm")
-		bld = &x
-	}
-
+	kx := kp.branch(pp)
 	fset := token.NewFileSet()
-	bp, _, astFiles, err := parseDir(kp.mx, bld, fset, pp.Dir, kp.SrcMap, sk.CheckFuncs)
+	bp, _, astFiles, err := parseDir(kx.mx, kx.bld, fset, pp.Dir, kx.SrcMap, sk)
 	if err != nil {
 		return nil, err
 	}
+
 	// we might as well reace ahead and load the imports concurrently
-	kp.preloadImports(pp.Dir, astFiles)
+	kx.preloadImports(sk, bp)
 	tc := types.Config{
 		FakeImportC:              !sk.ImportC,
 		IgnoreFuncBodies:         !sk.CheckFuncs,
@@ -194,8 +222,8 @@ func (kp *Importer) check(sk stateKey, st *state, pp *gopkg.PkgPath) (*types.Pac
 				st.hardErr = err
 			}
 		},
-		Importer: kp.branch(pp),
-		Sizes:    types.SizesFor(bld.Compiler, bld.GOARCH),
+		Importer: kx,
+		Sizes:    types.SizesFor(kx.bld.Compiler, kx.bld.GOARCH),
 	}
 	st.pkg, st.err = tc.Check(bp.ImportPath, fset, astFiles, nil)
 	if st.err == nil && st.hardErr != nil {
@@ -206,13 +234,12 @@ func (kp *Importer) check(sk stateKey, st *state, pp *gopkg.PkgPath) (*types.Pac
 
 }
 
-func (kp *Importer) preloadImports(srcDir string, files []*ast.File) {
+func (kp *Importer) preloadImports(sk stateKey, bp *build.Package) {
 	if kp.NoConcurrency {
 		return
 	}
-
 	preload := func(ipath string) {
-		pp, err := kp.mp.FindPkg(kp.mx, ipath, srcDir)
+		pp, err := kp.mp.FindPkg(kp.mx, ipath, bp.Dir)
 		if err != nil {
 			return
 		}
@@ -228,20 +255,26 @@ func (kp *Importer) preloadImports(srcDir string, files []*ast.File) {
 
 		go kx.importPkg(pp)
 	}
-	seen := map[string]bool{}
-	for _, af := range files {
-		for _, spec := range af.Imports {
-			if spec.Path == nil {
-				continue
-			}
-			p, err := strconv.Unquote(spec.Path.Value)
-			if err != nil || p == "" || p == "C" || strings.HasPrefix(p, ".") || seen[p] {
-				continue
-			}
-			seen[p] = true
-			preload(p)
+	for _, ipath := range bp.Imports {
+		preload(ipath)
+	}
+	if sk.Tests {
+		for _, ipath := range bp.TestImports {
+			preload(ipath)
 		}
 	}
+}
+
+func (kp *Importer) setupJs(pp *gopkg.PkgPath) {
+	fs := kp.mx.VFS
+	nd := fs.Poke(kp.bld.GOROOT).Poke("src/syscall/js")
+	if fs.Poke(pp.Dir) != nd && fs.Poke(kp.mx.View.Dir()) != nd {
+		return
+	}
+	bld := *kp.bld
+	bld.GOOS = "js"
+	bld.GOARCH = "wasm"
+	kp.bld = &bld
 }
 
 func (kp *Importer) branch(pp *gopkg.PkgPath) *Importer {
@@ -250,16 +283,31 @@ func (kp *Importer) branch(pp *gopkg.PkgPath) *Importer {
 		kx.mp = pp.Mod
 	}
 	kx.par = kp
+	kx.setupJs(pp)
 	return kx
 }
 
 func New(mx *mg.Ctx) *Importer {
+	bld := goutil.BuildContext(mx)
 	return &Importer{
 		mx:  mx,
-		bld: goutil.BuildContext(mx),
+		bld: bld,
 		sc:  sharedCache,
 
 		mu:       &sync.Mutex{},
 		imported: map[stateKey]bool{},
+		tags:     tagsStr(bld.BuildTags),
 	}
+}
+
+func tagsStr(l []string) string {
+	switch len(l) {
+	case 0:
+		return ""
+	case 1:
+		return l[0]
+	}
+	s := append(sort.StringSlice{}, l...)
+	s.Sort()
+	return strings.Join(s, " ")
 }

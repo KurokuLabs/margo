@@ -46,15 +46,19 @@ func (kf *kpFile) init() {
 	}
 }
 
-func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, srcMap map[string][]byte, checkFuncs bool) (*build.Package, []*kpFile, []*ast.File, error) {
+func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, srcMap map[string][]byte, sk stateKey) (*build.Package, []*kpFile, []*ast.File, error) {
 	bp, err := bcx.ImportDir(dir, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	wg := sync.WaitGroup{}
-	kpFiles := make([]*kpFile, 0, len(bp.GoFiles)+len(bp.CgoFiles))
-	for _, l := range [][]string{bp.GoFiles, bp.CgoFiles} {
+	testFiles := bp.TestGoFiles
+	if !sk.Tests {
+		testFiles = nil
+	}
+	kpFiles := make([]*kpFile, 0, len(bp.GoFiles)+len(bp.CgoFiles)+len(testFiles))
+	for _, l := range [][]string{bp.GoFiles, bp.CgoFiles, testFiles} {
 		for _, nm := range l {
 			fn := filepath.Join(dir, nm)
 			kf := &kpFile{
@@ -62,7 +66,7 @@ func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, s
 				Fset:       fset,
 				Fn:         fn,
 				Src:        srcMap[fn],
-				CheckFuncs: checkFuncs,
+				CheckFuncs: sk.CheckFuncs,
 			}
 			kpFiles = append(kpFiles, kf)
 			wg.Add(1)
