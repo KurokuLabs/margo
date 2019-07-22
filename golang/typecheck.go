@@ -65,7 +65,7 @@ func (tc *TypeCheck) check(mx *mg.Ctx) {
 	if p, err := gopkg.ImportDir(mx, dir); err == nil {
 		importPath = p.ImportPath
 	}
-	kp := kimporter.New(mx)
+	kp := kimporter.New(mx, nil)
 	fset, files, err := tc.parseFiles(mx)
 	issues := tc.errToIssues(err)
 	if err == nil && len(files) != 0 {

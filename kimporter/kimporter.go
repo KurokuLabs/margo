@@ -1,16 +1,22 @@
 package kimporter
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"go/build"
 	"go/token"
 	"go/types"
 	"golang.org/x/crypto/blake2b"
+	"golang.org/x/net/context"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/tools/go/gcexportdata"
 	"margo.sh/golang/gopkg"
 	"margo.sh/golang/goutil"
 	"margo.sh/mg"
 	"margo.sh/mgutil"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +25,11 @@ import (
 
 var (
 	sharedCache = &stateCache{m: map[stateKey]*state{}}
+	pkgC        = func() *types.Package {
+		p := types.NewPackage("C", "C")
+		p.MarkComplete()
+		return p
+	}()
 )
 
 type stateKey struct {
@@ -26,7 +37,6 @@ type stateKey struct {
 	Dir          string
 	CheckFuncs   bool
 	CheckImports bool
-	ImportC      bool
 	Tests        bool
 	Tags         string
 	GOARCH       string
@@ -37,7 +47,7 @@ type stateKey struct {
 }
 
 type stateCache struct {
-	mu sync.RWMutex
+	mu sync.Mutex
 	m  map[stateKey]*state
 }
 
@@ -50,56 +60,60 @@ func (sc *stateCache) state(mx *mg.Ctx, k stateKey) *state {
 	if v, ok := sc.m[k]; ok {
 		return v
 	}
-	v := &state{ImportPath: k.ImportPath}
+	v := &state{stateKey: k}
 	sc.m[k] = v
 	return v
 }
 
 type state struct {
-	ImportPath string
+	stateKey
 
 	mu      sync.Mutex
 	err     error
-	hardErr error
 	pkg     *types.Package
 	checked bool
 }
 
-func (st *state) result() (*types.Package, error) {
+func (ks *state) reset() {
+	ks.pkg = nil
+	ks.err = nil
+	ks.checked = false
+}
+
+func (ks *state) result() (*types.Package, error) {
 	switch {
-	case !st.checked:
-		return nil, fmt.Errorf("import cycle via %s", st.ImportPath)
-	case st.hardErr != nil:
-		return nil, st.hardErr
-	case st.err != nil:
-		return st.pkg, st.err
-	case !st.pkg.Complete():
+	case !ks.checked:
+		return nil, fmt.Errorf("import cycle via %s", ks.ImportPath)
+	case ks.err != nil:
+		return ks.pkg, ks.err
+	case !ks.pkg.Complete():
 		// Package exists but is not complete - we cannot handle this
 		// at the moment since the source importer replaces the package
 		// wholesale rather than augmenting it (see #19337 for details).
 		// Return incomplete package with error (see #16088).
-		return st.pkg, fmt.Errorf("reimported partially imported package %q", st.ImportPath)
+		return ks.pkg, fmt.Errorf("reimported partially imported package %q", ks.ImportPath)
 	default:
-		return st.pkg, nil
+		return ks.pkg, nil
 	}
 }
 
-type Importer struct {
+type Config struct {
 	SrcMap        map[string][]byte
 	CheckFuncs    bool
 	CheckImports  bool
-	ImportC       bool
 	NoConcurrency bool
+	Tests         bool
+}
 
-	mx  *mg.Ctx
-	bld *build.Context
-	mp  *gopkg.ModPath
-	sc  *stateCache
-	par *Importer
-
-	mu       *sync.Mutex
-	tags     string
-	imported map[stateKey]bool
+type Importer struct {
+	cfg  Config
+	mx   *mg.Ctx
+	bld  *build.Context
+	ks   *state
+	mp   *gopkg.ModPath
+	par  *Importer
+	tags string
+	hash string
 }
 
 func (kp *Importer) Import(path string) (*types.Package, error) {
@@ -111,59 +125,64 @@ func (kp *Importer) ImportFrom(ipath, srcDir string, mode types.ImportMode) (*ty
 	if mode != 0 {
 		panic("non-zero import mode")
 	}
+	if ipath == "C" {
+		return pkgC, nil
+	}
+	if ipath == "unsafe" {
+		return types.Unsafe, nil
+	}
 	if p, err := filepath.Abs(srcDir); err == nil {
 		srcDir = p
 	}
 	if !filepath.IsAbs(srcDir) {
 		return nil, fmt.Errorf("srcDir is not absolute: %s", srcDir)
 	}
-	pp, err := kp.mp.FindPkg(kp.mx, ipath, srcDir)
+	pp, err := kp.findPkg(ipath, srcDir)
 	if err != nil {
 		return nil, err
 	}
 	return kp.importPkg(pp)
 }
 
-func (kp *Importer) copy() *Importer {
-	kp.mu.Lock()
-	defer kp.mu.Unlock()
-
-	x := *kp
-	return &x
+func (kp *Importer) findPkg(ipath, srcDir string) (*gopkg.PkgPath, error) {
+	return kp.mp.FindPkg(kp.mx, ipath, srcDir)
 }
 
 func (kp *Importer) stateKey(pp *gopkg.PkgPath) stateKey {
-	smHash := ""
-	if len(kp.SrcMap) != 0 {
-		fns := make(sort.StringSlice, len(kp.SrcMap))
-		for fn, _ := range kp.SrcMap {
-			fns = append(fns, fn)
-		}
-		fns.Sort()
-		b2, _ := blake2b.New256(nil)
-		for _, fn := range fns {
-			b2.Write([]byte(fn))
-			b2.Write(kp.SrcMap[fn])
-		}
-		smHash = hex.EncodeToString(b2.Sum(nil))
-	}
-
-	// user settings don't apply when checking deps
-	userSettings := kp.par == nil
+	cfg := kp.cfg
 	return stateKey{
 		ImportPath:   pp.ImportPath,
 		Dir:          pp.Dir,
-		CheckFuncs:   userSettings && kp.CheckFuncs,
-		CheckImports: userSettings && kp.CheckImports,
-		ImportC:      userSettings && kp.ImportC,
-		Tests:        strings.HasSuffix(kp.mx.View.Name, "_test.go"),
+		CheckFuncs:   cfg.CheckFuncs,
+		CheckImports: cfg.CheckImports,
+		Tests:        cfg.Tests,
 		Tags:         kp.tags,
 		GOOS:         kp.bld.GOOS,
 		GOARCH:       kp.bld.GOARCH,
 		GOROOT:       kp.bld.GOROOT,
-		SrcMapHash:   smHash,
+		SrcMapHash:   kp.hash,
 		GOPATH:       strings.Join(mgutil.PathList(kp.bld.GOPATH), string(filepath.ListSeparator)),
 	}
+}
+
+func (kp *Importer) state(pp *gopkg.PkgPath) *state {
+	return sharedCache.state(kp.mx, kp.stateKey(pp))
+}
+
+func (kp *Importer) detectCycle(ks *state) error {
+	l := []string{ks.ImportPath}
+	for p := kp.par; p != nil; p = p.par {
+		if p.ks == nil {
+			continue
+		}
+		if p.ks.ImportPath != "" {
+			l = append(l, p.ks.ImportPath)
+		}
+		if p.ks.Dir == ks.Dir {
+			return fmt.Errorf("import cycle: %s", strings.Join(l, " <~ "))
+		}
+	}
+	return nil
 }
 
 func (kp *Importer) importPkg(pp *gopkg.PkgPath) (*types.Package, error) {
@@ -171,98 +190,137 @@ func (kp *Importer) importPkg(pp *gopkg.PkgPath) (*types.Package, error) {
 	defer kp.mx.Profile.Push(title).Pop()
 	defer kp.mx.Begin(mg.Task{Title: title}).Done()
 
-	sk := kp.stateKey(pp)
-	st := kp.sc.state(kp.mx, sk)
-	kp.mu.Lock()
-	imported, importing := kp.imported[sk]
-	if !importing {
-		kp.imported[sk] = false
+	ks := kp.state(pp)
+	kx := kp.branch(ks, pp)
+	if err := kx.detectCycle(ks); err != nil {
+		return nil, err
 	}
-	kp.mu.Unlock()
-	if imported {
-		return st.result()
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+
+	if ks.checked {
+		return ks.result()
 	}
-	defer func() {
-		kp.mu.Lock()
-		kp.imported[sk] = true
-		kp.mu.Unlock()
-	}()
-	return kp.check(sk, st, pp)
+	ks.reset()
+	ks.checked = true
+	ks.pkg, ks.err = kx.check(ks, pp)
+	return ks.result()
 }
 
-func (kp *Importer) check(sk stateKey, st *state, pp *gopkg.PkgPath) (*types.Package, error) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-
-	if st.checked {
-		return st.result()
-	}
-
-	if pp.Goroot && pp.ImportPath == "unsafe" {
-		st.checked = true
-		st.pkg = types.Unsafe
-		return st.result()
-	}
-
-	kx := kp.branch(pp)
+func (kp *Importer) check(ks *state, pp *gopkg.PkgPath) (*types.Package, error) {
 	fset := token.NewFileSet()
-	bp, _, astFiles, err := parseDir(kx.mx, kx.bld, fset, pp.Dir, kx.SrcMap, sk)
+	bp, _, astFiles, err := parseDir(kp.mx, kp.bld, fset, pp.Dir, kp.cfg.SrcMap, ks)
 	if err != nil {
 		return nil, err
 	}
 
-	// we might as well reace ahead and load the imports concurrently
-	kx.preloadImports(sk, bp)
+	imports, err := kp.loadImports(ks, bp)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(bp.CgoFiles) != 0 {
+		pkg, err := kp.importCgoPkg(pp, imports)
+		if err == nil {
+			return pkg, nil
+		}
+	}
+
+	var hardErr error
 	tc := types.Config{
-		FakeImportC:              !sk.ImportC,
-		IgnoreFuncBodies:         !sk.CheckFuncs,
-		DisableUnusedImportCheck: !sk.CheckImports,
+		FakeImportC:              true,
+		IgnoreFuncBodies:         !ks.CheckFuncs,
+		DisableUnusedImportCheck: !ks.CheckImports,
 		Error: func(err error) {
-			if te, ok := err.(types.Error); ok && !te.Soft && st.hardErr == nil {
-				st.hardErr = err
+			if te, ok := err.(types.Error); ok && !te.Soft && hardErr == nil {
+				hardErr = err
 			}
 		},
-		Importer: kx,
-		Sizes:    types.SizesFor(kx.bld.Compiler, kx.bld.GOARCH),
+		Importer: kp,
+		Sizes:    types.SizesFor(kp.bld.Compiler, kp.bld.GOARCH),
 	}
-	st.pkg, st.err = tc.Check(bp.ImportPath, fset, astFiles, nil)
-	if st.err == nil && st.hardErr != nil {
-		st.err = st.hardErr
+	pkg, err := tc.Check(bp.ImportPath, fset, astFiles, nil)
+	if err == nil && hardErr != nil {
+		err = hardErr
 	}
-	st.checked = true
-	return st.result()
-
+	return pkg, err
 }
 
-func (kp *Importer) preloadImports(sk stateKey, bp *build.Package) {
-	if kp.NoConcurrency {
-		return
-	}
-	preload := func(ipath string) {
-		pp, err := kp.mp.FindPkg(kp.mx, ipath, bp.Dir)
-		if err != nil {
-			return
-		}
-		kx := kp.branch(pp)
+func (kp *Importer) importCgoPkg(pp *gopkg.PkgPath, imports map[string]*types.Package) (*types.Package, error) {
+	name := `go`
+	args := []string{`list`, `-e`, `-export`, `-f={{.Export}}`, pp.Dir}
+	ctx, cancel := context.WithCancel(context.Background())
+	title := mgutil.QuoteCmd(name, args...)
+	defer kp.mx.Profile.Push(title).Pop()
+	defer kp.mx.Begin(mg.Task{Title: title, Cancel: cancel}).Done()
 
-		sk := kx.stateKey(pp)
-		kx.mu.Lock()
-		_, importing := kx.imported[sk]
-		kx.mu.Unlock()
-		if importing {
-			return
-		}
+	buf := &bytes.Buffer{}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = pp.Dir
+	cmd.Stdout = buf
+	cmd.Env = kp.mx.Env.Environ()
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%s: %s", title, err)
+	}
+	fn := string(bytes.TrimSpace(buf.Bytes()))
+	f, err := os.Open(fn)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %s.a: %s", pp.ImportPath, err)
+	}
+	defer f.Close()
+	rd, err := gcexportdata.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create export data reader for %s from %s: %s", pp.ImportPath, fn, err)
+	}
+	pkg, err := gcexportdata.Read(rd, token.NewFileSet(), imports, pp.ImportPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read export data for %s from %s: %s", pp.ImportPath, fn, err)
+	}
+	return pkg, nil
+}
 
-		go kx.importPkg(pp)
+func (kp *Importer) loadImports(ks *state, bp *build.Package) (map[string]*types.Package, error) {
+	paths := mgutil.StrSet(bp.Imports)
+	if ks.Tests {
+		paths = paths.Add(bp.TestImports...)
 	}
-	for _, ipath := range bp.Imports {
-		preload(ipath)
-	}
-	if sk.Tests {
-		for _, ipath := range bp.TestImports {
-			preload(ipath)
+	imports := make(map[string]*types.Package, len(paths))
+	mu := sync.Mutex{}
+	doImport := func(ipath string) error {
+		pkg, err := kp.ImportFrom(ipath, bp.Dir, 0)
+		if err == nil {
+			mu.Lock()
+			imports[ipath] = pkg
+			mu.Unlock()
 		}
+		return err
 	}
+	if kp.cfg.NoConcurrency || len(paths) < 2 {
+		for _, ipath := range paths {
+			if err := doImport(ipath); err != nil {
+				return imports, err
+			}
+		}
+		return imports, nil
+	}
+	imps := make(chan string, len(paths))
+	for _, ipath := range paths {
+		imps <- ipath
+	}
+	close(imps)
+	errg := &errgroup.Group{}
+	for i := 0; i < mgutil.MinNumCPU(len(paths)); i++ {
+		errg.Go(func() error {
+			for ipath := range imps {
+				if err := doImport(ipath); err != nil {
+					return err
+				}
+			}
+			return nil
+
+		})
+	}
+	return imports, errg.Wait()
 }
 
 func (kp *Importer) setupJs(pp *gopkg.PkgPath) {
@@ -277,27 +335,50 @@ func (kp *Importer) setupJs(pp *gopkg.PkgPath) {
 	kp.bld = &bld
 }
 
-func (kp *Importer) branch(pp *gopkg.PkgPath) *Importer {
-	kx := kp.copy()
+func (kp *Importer) branch(ks *state, pp *gopkg.PkgPath) *Importer {
+	kx := *kp
 	if pp.Mod != nil {
 		kx.mp = pp.Mod
 	}
+	// user settings don't apply when checking deps
+	kx.cfg.CheckFuncs = false
+	kx.cfg.CheckImports = false
+	kx.cfg.Tests = false
+	kx.ks = ks
 	kx.par = kp
 	kx.setupJs(pp)
-	return kx
+	return &kx
 }
 
-func New(mx *mg.Ctx) *Importer {
+func New(mx *mg.Ctx, cfg *Config) *Importer {
 	bld := goutil.BuildContext(mx)
-	return &Importer{
-		mx:  mx,
-		bld: bld,
-		sc:  sharedCache,
-
-		mu:       &sync.Mutex{},
-		imported: map[stateKey]bool{},
-		tags:     tagsStr(bld.BuildTags),
+	kp := &Importer{
+		mx:   mx,
+		bld:  bld,
+		tags: tagsStr(bld.BuildTags),
 	}
+	if cfg != nil {
+		kp.cfg = *cfg
+		kp.hash = srcMapHash(cfg.SrcMap)
+	}
+	return kp
+}
+
+func srcMapHash(m map[string][]byte) string {
+	if len(m) == 0 {
+		return ""
+	}
+	fns := make(sort.StringSlice, len(m))
+	for fn, _ := range m {
+		fns = append(fns, fn)
+	}
+	fns.Sort()
+	b2, _ := blake2b.New256(nil)
+	for _, fn := range fns {
+		b2.Write([]byte(fn))
+		b2.Write(m[fn])
+	}
+	return hex.EncodeToString(b2.Sum(nil))
 }
 
 func tagsStr(l []string) string {

@@ -92,7 +92,7 @@ func (mgc *marGocodeCtl) importerFactories() (newDefaultImporter, newFallbackImp
 }
 
 func (mgc *marGocodeCtl) newKimPorter(mx *mg.Ctx, overlay types.ImporterFrom) types.ImporterFrom {
-	return kimporter.New(mx)
+	return kimporter.New(mx, nil)
 }
 
 // importPathByName returns an import path whose pkg's name is pkgName
@@ -190,7 +190,7 @@ func (mgc *marGocodeCtl) preloadPackages(mx *mg.Ctx) {
 
 	var importFrom func(string, string, types.ImportMode) (*types.Package, error)
 	if cfg.ImporterMode == KimPorter {
-		importFrom = kimporter.New(mx).ImportFrom
+		importFrom = kimporter.New(mx, nil).ImportFrom
 	} else {
 		importFrom = mgc.newGcSuggest(mx).imp.ImportFrom
 	}

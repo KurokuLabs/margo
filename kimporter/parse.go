@@ -1,5 +1,3 @@
-//margo:no-restart
-
 package kimporter
 
 import (
@@ -46,15 +44,14 @@ func (kf *kpFile) init() {
 	}
 }
 
-func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, srcMap map[string][]byte, sk stateKey) (*build.Package, []*kpFile, []*ast.File, error) {
+func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, srcMap map[string][]byte, ks *state) (*build.Package, []*kpFile, []*ast.File, error) {
 	bp, err := bcx.ImportDir(dir, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
 	wg := sync.WaitGroup{}
 	testFiles := bp.TestGoFiles
-	if !sk.Tests {
+	if !ks.Tests {
 		testFiles = nil
 	}
 	kpFiles := make([]*kpFile, 0, len(bp.GoFiles)+len(bp.CgoFiles)+len(testFiles))
@@ -66,7 +63,7 @@ func parseDir(mx *mg.Ctx, bcx *build.Context, fset *token.FileSet, dir string, s
 				Fset:       fset,
 				Fn:         fn,
 				Src:        srcMap[fn],
-				CheckFuncs: sk.CheckFuncs,
+				CheckFuncs: ks.CheckFuncs,
 			}
 			kpFiles = append(kpFiles, kf)
 			wg.Add(1)
