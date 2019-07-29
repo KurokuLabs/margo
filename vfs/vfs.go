@@ -444,7 +444,7 @@ func (nd *Node) sync() (*meta, error) {
 	}
 	// if a file in a directory changed, the dir's memo is cleared as well because
 	// a dir's memo is primarily used to store pkg/dir data that depends on the file
-	if reset && !nd.isBranch() {
+	if reset && mt.fmode != 0 && (fi == nil || !fi.IsDir()) {
 		nd.resetParent()
 	}
 	if err != nil {
