@@ -15,8 +15,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v1
       with:
-        path: ~/go/src/margo.sh
+        path: ${HOME}/go/src/margo.sh
     - name: Build
-      run: go build -o ~/mg.sh margo.sh
+      run: go build -o ${HOME}/mg.sh margo.sh
     - name: CI
-      run: ~/mg.sh ci
+      run: ${HOME}/mg.sh ci
