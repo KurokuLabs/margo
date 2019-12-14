@@ -17,6 +17,8 @@ jobs:
       with:
         path: ./src/margo.sh
     - name: Dbg
+      env:
+        GOPATH: ${{ github.workspace }}
       run: |
         go env
         go list margo.sh
