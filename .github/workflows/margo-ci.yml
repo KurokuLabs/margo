@@ -15,10 +15,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        path: ./src/margo.sh
-    - name: Dbg
+        path: src/margo.sh
+    - name: CI
       env:
         GOPATH: ${{ github.workspace }}
-      run: |
-        go env
-        go list margo.sh
+      run: go run margo.sh ci
