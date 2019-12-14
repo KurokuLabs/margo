@@ -13,10 +13,10 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
       with:
-        path: go/src/margo.sh
-    - name: Build
-      run: go build -o mg.sh margo.sh
+        path: src/margo.sh
     - name: CI
-      run: ./mg.sh ci
+      env:
+        GOPATH: ${{ github.workspace }}
+      run: go run margo.sh ci
