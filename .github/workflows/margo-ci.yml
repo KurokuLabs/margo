@@ -18,7 +18,7 @@ jobs:
         path: ./src/margo.sh
     - name: Dbg
       env:
-        GOPATH: ${{ runner.workspace }}
+        GOPATH: ${GITHUB_WORKSPACE}
       run: |
-        echo rw: ${{ runner.workspace }}
-        echo gw: ${GITHUB_WORKSPACE}
+        go env
+        go list margo.sh
