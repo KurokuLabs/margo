@@ -20,5 +20,5 @@ jobs:
       env:
         GOPATH: ${{ runner.workspace }}
       run: |
-        go env
-        go list margo.sh
+        echo rw: ${{ runner.workspace }}
+        echo gw: ${GITHUB_WORKSPACE}
