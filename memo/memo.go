@@ -149,9 +149,9 @@ func (m *M) Values() map[K]V {
 	defer m.mu.Unlock()
 
 	vals := make(map[K]V, len(m.ml))
-	for k, p := range m.ml {
+	for _, p := range m.ml {
 		if v := p.value(); v != nil {
-			vals[k] = v
+			vals[p.k] = v
 		}
 	}
 	return vals
