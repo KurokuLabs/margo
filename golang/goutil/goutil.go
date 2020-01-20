@@ -55,6 +55,9 @@ func BuildContext(mx *mg.Ctx) *build.Context {
 		if v := mx.View; v != nil && p == v.Path {
 			return v.Open()
 		}
+		if b := mx.VFS.PeekBlob(p); b != nil {
+			return b.OpenFile()
+		}
 		return os.Open(p)
 	}
 	return c
