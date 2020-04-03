@@ -166,6 +166,10 @@ func Margo(m mg.Args) {
 		// 	"--disable=gas",
 		// 	"--fast",
 		// }},
+
+		// AsmFmt is a reducer that does code fmt'ing for `.s` files.
+		// It uses the package https://github.com/klauspost/asmfmt
+		// &golang.AsmFmt{},
 	)
 }
 
