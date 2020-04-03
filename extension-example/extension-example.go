@@ -181,6 +181,11 @@ func Margo(m mg.Args) {
 		// &web.Prettier{
 		// 	Langs: web.PrettierDefaultLangs,
 		// },
+
+		// PackageScripts adds UserCmd entries for each script defined in package.json
+		//
+		// You will need to `import "margo.sh/web/nodejs"`
+		// &nodejs.PackageScripts{},
 	)
 }
 
