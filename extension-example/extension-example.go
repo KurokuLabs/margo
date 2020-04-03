@@ -170,6 +170,17 @@ func Margo(m mg.Args) {
 		// AsmFmt is a reducer that does code fmt'ing for `.s` files.
 		// It uses the package https://github.com/klauspost/asmfmt
 		// &golang.AsmFmt{},
+
+		// Prettier is a reducer that does code fmt'ing using https://github.com/prettier/prettier
+		// It fmt's CSS, HTML, JS, JSON, JSX, SVG, TS, TSX and XML files.
+		//
+		// NOTE: as a special-case, files with extensions starting with `.sublime-` are ignored.
+		// NOTE: you will need to install prettier separately
+		//
+		// You will need to `import "margo.sh/web"`
+		// &web.Prettier{
+		// 	Langs: web.PrettierDefaultLangs,
+		// },
 	)
 }
 
