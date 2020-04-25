@@ -60,7 +60,10 @@ func Margo(m mg.Args) {
 		//   by default this command is bound to ctrl+.,ctrl+r or cmd+.,cmd+r
 		//
 		// UserCmds are also added for `Go Play` and `Go RePlay`
-		&golang.GoCmd{},
+		&golang.GoCmd{
+			// Make the output of `go test -bench...` more readable.
+			// Humanize: true,
+		},
 
 		// add the day and time to the status bar
 		&DayTimeStatus{},
