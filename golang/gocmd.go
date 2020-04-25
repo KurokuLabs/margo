@@ -1,16 +1,26 @@
 package golang
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"go/build"
+	"io"
 	"io/ioutil"
 	"margo.sh/mg"
+	"margo.sh/mgutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
-type GoCmd struct{ mg.ReducerType }
+type GoCmd struct {
+	mg.ReducerType
+
+	Humanize bool
+}
 
 func (gc *GoCmd) Reduce(mx *mg.Ctx) *mg.State {
 	switch act := mx.Action.(type) {
@@ -78,7 +88,7 @@ func (gc *GoCmd) replayBuiltin(bx *mg.CmdCtx) *mg.State {
 }
 
 func (gc *GoCmd) goTool(bx *mg.CmdCtx) {
-	gx := newGoCmdCtx(bx, "go.builtin", "", "", "")
+	gx := newGoCmdCtx(gc, bx, "go.builtin", "", "", "")
 	defer gx.Output.Close()
 	gx.run(gx.View)
 }
@@ -86,7 +96,7 @@ func (gc *GoCmd) goTool(bx *mg.CmdCtx) {
 func (gc *GoCmd) playTool(bx *mg.CmdCtx, cancelID string) {
 	origView := bx.View
 	bx, tDir, tFn, err := gc.playTempDir(bx)
-	gx := newGoCmdCtx(bx, "go.play", cancelID, tDir, tFn)
+	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn)
 	defer gx.Output.Close()
 
 	if err != nil {
@@ -195,7 +205,7 @@ type goCmdCtx struct {
 	tFn    string
 }
 
-func newGoCmdCtx(bx *mg.CmdCtx, label, cancelID string, tDir, tFn string) *goCmdCtx {
+func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn string) *goCmdCtx {
 	gx := &goCmdCtx{
 		pkgDir: bx.View.Dir(),
 		tDir:   tDir,
@@ -211,11 +221,16 @@ func newGoCmdCtx(bx *mg.CmdCtx, label, cancelID string, tDir, tFn string) *goCmd
 		Dir:      gx.pkgDir,
 	}
 
+	output := bx.Output
+	if gc.Humanize && len(bx.Args) > 0 && bx.Args[0] == "test" {
+		output = mgutil.NewSplitWriter(mgutil.SplitLine, &humanizeWriter{output})
+	}
+
 	gx.CmdCtx = bx.Copy(func(bx *mg.CmdCtx) {
 		bx.Name = "go"
 		bx.CancelID = cancelID
 		bx.Output = mg.OutputStreams{
-			bx.Output,
+			output,
 			gx.iw,
 		}
 	})
@@ -253,4 +268,63 @@ func (gx *goCmdCtx) run(origView *mg.View) error {
 
 	gx.Store.Dispatch(mg.StoreIssues{IssueKey: ik, Issues: issues})
 	return err
+}
+
+func isWhiteSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+func humanizeMetric(met string) string {
+	i := 0
+	for i < len(met) && isWhiteSpace(met[i]) {
+		i++
+	}
+	j := i
+	for j < len(met) && !isWhiteSpace(met[j]) {
+		j++
+	}
+	pfx := met[:i]
+	val := met[i:j]
+	sfx := met[j:]
+	num, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return met
+	}
+	switch strings.TrimSpace(sfx) {
+	case "ns/op":
+		s := time.Duration(num).String()
+		i := 0
+		for i < len(s) {
+			c := s[i]
+			if (c >= '0' && c <= '9') || c == '.' {
+				i++
+			} else {
+				break
+			}
+		}
+		return pfx + s[:i] + " " + s[i:] + "/op"
+	case "B/op":
+		return pfx + humanize.IBytes(uint64(num)) + "/op"
+	default:
+		return pfx + humanize.Comma(num) + sfx
+	}
+}
+
+type humanizeWriter struct {
+	io.WriteCloser
+}
+
+func (w *humanizeWriter) Write(ln []byte) (int, error) {
+	s := make([]byte, 0, len(ln)+42)
+	for len(ln) != 0 {
+		i := bytes.IndexByte(ln, '\t')
+		if i < 0 {
+			s = append(s, humanizeMetric(string(ln))...)
+			break
+		}
+		i++
+		s = append(s, humanizeMetric(string(ln[:i]))...)
+		ln = ln[i:]
+	}
+	return w.WriteCloser.Write(s)
 }

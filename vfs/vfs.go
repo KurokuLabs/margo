@@ -19,6 +19,13 @@ const (
 )
 
 var (
+	defaultScratchBufferSize = (func() int {
+		n := os.Getpagesize()
+		if n < 4<<10 {
+			n = 4 << 10
+		}
+		return 64 * n
+	})()
 	asyncC = make(chan func(), 1000)
 )
 
@@ -91,7 +98,7 @@ func (fs *FS) PeekMemo(path string, k memo.K) memo.V {
 }
 
 func (fs *FS) Scan(path string, so ScanOptions) {
-	so.scratch = make([]byte, godirwalk.DefaultScratchBufferSize)
+	so.scratch = make([]byte, defaultScratchBufferSize)
 	fs.Poke(path).scan(path, &so, 0)
 }
 
