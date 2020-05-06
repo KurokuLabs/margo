@@ -101,6 +101,8 @@ func (gc *GoCmd) playTool(bx *mg.CmdCtx, cancelID string) {
 	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn)
 	defer gx.Output.Close()
 
+	gx.Verbose = true
+
 	if err != nil {
 		fmt.Fprintf(gx.Output, "Error: %s\n", err)
 	}
