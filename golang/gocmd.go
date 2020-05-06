@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/dustin/go-humanize"
+	"go/ast"
 	"go/build"
 	"io"
 	"io/ioutil"
+	"margo.sh/golang/cursor"
 	"margo.sh/mg"
 	"margo.sh/mgutil"
 	"os"
@@ -157,7 +159,19 @@ func (gc *GoCmd) playTempDir(bx *mg.CmdCtx) (newBx *mg.CmdCtx, tDir string, tFn 
 }
 
 func (gc *GoCmd) playToolTest(gx *goCmdCtx, bld *build.Context, origView *mg.View) {
-	gx.Args = append([]string{"test"}, gx.Args...)
+	argsPfx := []string{"test", "-test.run=."}
+	cx := cursor.NewViewCurCtx(gx.Ctx)
+	for _, n := range cx.Nodes {
+		x, ok := n.(*ast.FuncDecl)
+		if !ok || x.Name == nil {
+			continue
+		}
+		nm := x.Name.String()
+		if strings.HasPrefix(nm, "Benchmark") {
+			argsPfx = append(argsPfx, "-test.bench=^"+nm+"$")
+		}
+	}
+	gx.Args = append(argsPfx, gx.Args...)
 	if origView.Path == "" {
 		gx.Args = append(gx.Args, gx.tFn)
 	}
