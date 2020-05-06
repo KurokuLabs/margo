@@ -158,6 +158,9 @@ func (gc *GoCmd) playTempDir(bx *mg.CmdCtx) (newBx *mg.CmdCtx, tDir string, tFn 
 
 func (gc *GoCmd) playToolTest(gx *goCmdCtx, bld *build.Context, origView *mg.View) {
 	gx.Args = append([]string{"test"}, gx.Args...)
+	if origView.Path == "" {
+		gx.Args = append(gx.Args, gx.tFn)
+	}
 	gx.run(origView)
 }
 
