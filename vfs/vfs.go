@@ -83,6 +83,8 @@ func (fs *FS) IsDir(path string) bool { return fs.Poke(path).IsDir() }
 
 func (fs *FS) IsFile(path string) bool { return fs.Poke(path).IsFile() }
 
+func (fs *FS) Closest(path string, f func(nd *Node) bool) *Node { return fs.Poke(path).Closest(f) }
+
 func (fs *FS) Memo(path string) (*Node, *memo.M, error) {
 	nd := fs.Poke(path)
 	m, err := nd.Memo()
@@ -577,6 +579,15 @@ func (nd *Node) Locate(name string) (*Node, os.FileInfo, error) {
 		return nil, nil, os.ErrNotExist
 	}
 	return nd.parent.Locate(name)
+}
+
+func (nd *Node) Closest(f func(nd *Node) bool) *Node {
+	for ; nd != nil; nd = nd.parent {
+		if f(nd) {
+			return nd
+		}
+	}
+	return nil
 }
 
 func isSep(r byte) bool { return r == '/' || r == '\\' }
