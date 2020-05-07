@@ -156,6 +156,14 @@ func IsPkgDir(dir string) bool {
 	return IsPkgDirNd(mg.VFS.Poke(dir))
 }
 
+func ClosestPkgDirNd(nd *vfs.Node) *vfs.Node {
+	return nd.Closest(IsPkgDirNd)
+}
+
+func ClosestPkgDir(dir string) *vfs.Node {
+	return mg.VFS.Closest(dir, IsPkgDirNd)
+}
+
 // DedentCompletion Dedents s then trims preceding and succeeding empty lines.
 func DedentCompletion(s string) string {
 	return strings.TrimFunc(Dedent(s), func(r rune) bool {
