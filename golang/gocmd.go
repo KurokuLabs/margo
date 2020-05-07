@@ -6,13 +6,13 @@ import (
 	"github.com/dustin/go-humanize"
 	"go/ast"
 	"go/build"
-	"io"
 	"io/ioutil"
 	"margo.sh/golang/cursor"
 	"margo.sh/mg"
 	"margo.sh/mgutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -90,7 +90,7 @@ func (gc *GoCmd) replayBuiltin(bx *mg.CmdCtx) *mg.State {
 }
 
 func (gc *GoCmd) goTool(bx *mg.CmdCtx) {
-	gx := newGoCmdCtx(gc, bx, "go.builtin", "", "", "")
+	gx := newGoCmdCtx(gc, bx, "go.builtin", "", "", "", bx.View)
 	defer gx.Output.Close()
 	gx.run(gx.View)
 }
@@ -98,7 +98,7 @@ func (gc *GoCmd) goTool(bx *mg.CmdCtx) {
 func (gc *GoCmd) playTool(bx *mg.CmdCtx, cancelID string) {
 	origView := bx.View
 	bx, tDir, tFn, err := gc.playTempDir(bx)
-	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn)
+	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn, origView)
 	defer gx.Output.Close()
 
 	gx.Verbose = true
@@ -224,12 +224,32 @@ type goCmdCtx struct {
 	tFn    string
 }
 
-func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn string) *goCmdCtx {
+func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn string, origView *mg.View) *goCmdCtx {
 	gx := &goCmdCtx{
 		pkgDir: bx.View.Dir(),
 		tDir:   tDir,
 		tFn:    tFn,
 	}
+
+	output := bx.Output
+	if gc.Humanize && len(bx.Args) > 0 && bx.Args[0] == "test" {
+		output = &humanizeWriter{output}
+	}
+	if gx.tFn != "" {
+		dir := filepath.Dir(gx.tFn)
+		qDir := regexp.QuoteMeta(dir)
+		qDirBase := regexp.QuoteMeta(filepath.Base(dir))
+		qNm := regexp.QuoteMeta(filepath.Base(gx.tFn))
+		output = &replWriter{
+			OutputStream: output,
+			pat: []*regexp.Regexp{
+				regexp.MustCompile(`(?:` + qDir + `|` + qDirBase + `)?[\\/.]+` + qNm),
+			},
+			new: []byte(origView.Name),
+		}
+
+	}
+	output = mgutil.NewSplitWriter(mgutil.SplitLine, output)
 
 	type Key struct{ label string }
 	gx.key = Key{label}
@@ -238,11 +258,6 @@ func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn str
 		Base:     mg.Issue{Label: label},
 		Patterns: bx.CommonPatterns(),
 		Dir:      gx.pkgDir,
-	}
-
-	output := bx.Output
-	if gc.Humanize && len(bx.Args) > 0 && bx.Args[0] == "test" {
-		output = mgutil.NewSplitWriter(mgutil.SplitLine, &humanizeWriter{output})
 	}
 
 	gx.CmdCtx = bx.Copy(func(bx *mg.CmdCtx) {
@@ -270,8 +285,9 @@ func (gx *goCmdCtx) run(origView *mg.View) error {
 	gx.iw.Flush()
 
 	issues := gx.iw.Issues()
+
 	for i, isu := range issues {
-		if isu.Path == gx.tFn {
+		if isu.Path == "" || (gx.tFn != "" && filepath.Base(isu.Path) == origView.Name) {
 			isu.Name = origView.Name
 			isu.Path = origView.Path
 		}
@@ -330,7 +346,7 @@ func humanizeMetric(met string) string {
 }
 
 type humanizeWriter struct {
-	io.WriteCloser
+	mg.OutputStream
 }
 
 func (w *humanizeWriter) Write(ln []byte) (int, error) {
@@ -345,5 +361,18 @@ func (w *humanizeWriter) Write(ln []byte) (int, error) {
 		s = append(s, humanizeMetric(string(ln[:i]))...)
 		ln = ln[i:]
 	}
-	return w.WriteCloser.Write(s)
+	return w.OutputStream.Write(s)
+}
+
+type replWriter struct {
+	mg.OutputStream
+	pat []*regexp.Regexp
+	new []byte
+}
+
+func (w *replWriter) Write(ln []byte) (int, error) {
+	for _, pat := range w.pat {
+		ln = pat.ReplaceAll(ln, w.new)
+	}
+	return w.OutputStream.Write(ln)
 }
