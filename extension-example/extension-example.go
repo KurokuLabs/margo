@@ -144,6 +144,9 @@ func Margo(m mg.Args) {
 			BenchArgs: []string{"-benchmem"},
 		},
 
+		// GoGenerate adds a UserCmd that calls `go generate` in go packages and sub-dirs
+		&golang.GoGenerate{Args: []string{"-v", "-x"}},
+
 		// run `go install -i` on save
 		// golang.GoInstall("-i"),
 		// or
