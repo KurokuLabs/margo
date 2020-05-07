@@ -246,6 +246,16 @@ func (nd *Node) Branches(f func(nd *Node)) {
 }
 
 func (nd *Node) Path() string {
+	if nd == nil {
+		return ""
+	}
+	if nd.IsRoot() {
+		if filepath.Separator == '/' {
+			return "/"
+		}
+		return ""
+	}
+
 	str := strings.Builder{}
 	var walk func(*Node, int)
 	walk = func(nd *Node, n int) {
@@ -260,9 +270,6 @@ func (nd *Node) Path() string {
 	walk(nd, 0)
 
 	if str.Len() == 0 {
-		if filepath.Separator == '/' {
-			return "/"
-		}
 		return ""
 	}
 
