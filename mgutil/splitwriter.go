@@ -20,10 +20,23 @@ func SplitLine(s []byte) (line, rest []byte, ok bool) {
 	return s[:i], s[i:], true
 }
 
+func SplitLineOrCR(s []byte) (line, rest []byte, ok bool) {
+	i := bytes.IndexByte(s, '\n')
+	if i < 0 {
+		i = bytes.IndexByte(s, '\r')
+		if i < 0 {
+			return nil, s, false
+		}
+	}
+	i++
+	return s[:i], s[i:], true
+}
+
 type SplitWriter struct {
-	split SplitFunc
-	write func([]byte) (int, error)
-	close func() error
+	split  SplitFunc
+	write  func([]byte) (int, error)
+	close  func() error
+	fflush func() error
 
 	mu  sync.Mutex
 	err error
@@ -62,18 +75,20 @@ func (w *SplitWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	return w.flush()
+	return w.flush(false)
 }
 
-func (w *SplitWriter) flush() error {
+func (w *SplitWriter) flush(closing bool) error {
 	if w.err != nil {
 		return w.err
 	}
-	if len(w.buf) == 0 {
-		return nil
+	if closing && len(w.buf) != 0 {
+		_, w.err = w.write(w.buf)
+		w.buf = nil
 	}
-	_, w.err = w.write(w.buf)
-	w.buf = nil
+	if err := w.fflush(); err != nil && w.err == nil {
+		w.err = err
+	}
 	return w.err
 }
 
@@ -84,7 +99,7 @@ func (w *SplitWriter) Close() error {
 	if w.err == ErrSplitWriterClosed {
 		return w.err
 	}
-	flushErr := w.flush()
+	flushErr := w.flush(true)
 	w.err = ErrSplitWriterClosed
 	if err := w.close(); err != nil {
 		return err
@@ -94,8 +109,18 @@ func (w *SplitWriter) Close() error {
 
 func NewSplitWriter(split SplitFunc, w io.WriteCloser) *SplitWriter {
 	return &SplitWriter{
-		split: split,
-		write: w.Write,
-		close: w.Close,
+		split:  split,
+		write:  w.Write,
+		close:  w.Close,
+		fflush: func() error { return nil },
+	}
+}
+
+func NewSplitStream(split SplitFunc, w OutputStream) *SplitWriter {
+	return &SplitWriter{
+		split:  split,
+		write:  w.Write,
+		close:  w.Close,
+		fflush: w.Flush,
 	}
 }
