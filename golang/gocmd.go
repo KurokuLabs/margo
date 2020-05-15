@@ -242,14 +242,17 @@ func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn str
 		qNm := regexp.QuoteMeta(filepath.Base(gx.tFn))
 		output = &replWriter{
 			OutputStream: output,
-			pat: []*regexp.Regexp{
+			old: []*regexp.Regexp{
 				regexp.MustCompile(`(?:` + qDir + `|` + qDirBase + `)?[\\/.]+` + qNm),
+				regexp.MustCompile(qDir),
 			},
-			new: []byte(origView.Name),
+			new: [][]byte{
+				[]byte(origView.Name),
+				[]byte(`tmp~`),
+			},
 		}
-
 	}
-	output = mgutil.NewSplitWriter(mgutil.SplitLine, output)
+	output = mgutil.NewSplitStream(mgutil.SplitLineOrCR, output)
 
 	type Key struct{ label string }
 	gx.key = Key{label}
@@ -366,13 +369,13 @@ func (w *humanizeWriter) Write(ln []byte) (int, error) {
 
 type replWriter struct {
 	mg.OutputStream
-	pat []*regexp.Regexp
-	new []byte
+	old []*regexp.Regexp
+	new [][]byte
 }
 
 func (w *replWriter) Write(ln []byte) (int, error) {
-	for _, pat := range w.pat {
-		ln = pat.ReplaceAll(ln, w.new)
+	for i, pat := range w.old {
+		ln = pat.ReplaceAll(ln, w.new[i])
 	}
 	return w.OutputStream.Write(ln)
 }
