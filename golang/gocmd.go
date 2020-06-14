@@ -90,33 +90,37 @@ func (gc *GoCmd) replayBuiltin(bx *mg.CmdCtx) *mg.State {
 }
 
 func (gc *GoCmd) goTool(bx *mg.CmdCtx) {
-	gx := newGoCmdCtx(gc, bx, "go.builtin", "", "", "", bx.View)
+	gx := newGoCmdCtx(gc, bx, "go.builtin", "", "", "", bx.View, len(bx.Args) > 0 && bx.Args[0] == "test")
 	defer gx.Output.Close()
 	gx.run(gx.View)
 }
 
 func (gc *GoCmd) playTool(bx *mg.CmdCtx, cancelID string) {
+	bld := BuildContext(bx.Ctx)
+	pkg, err := bld.ImportDir(bx.View.Dir(), 0)
+	if err != nil {
+		fmt.Fprintln(bx.Output, "Error: cannot import package:", err)
+	}
+
+	testMode := !pkg.IsCommand() ||
+		strings.HasSuffix(bx.View.Filename(), "_test.go")
+
 	origView := bx.View
 	bx, tDir, tFn, err := gc.playTempDir(bx)
-	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn, origView)
+	if err != nil {
+		fmt.Fprintf(bx.Output, "Error: %s\n", err)
+	}
+	defer os.RemoveAll(tDir)
+	if tDir == "" {
+		return
+	}
+	gx := newGoCmdCtx(gc, bx, "go.play", cancelID, tDir, tFn, origView, testMode)
 	defer gx.Output.Close()
 
 	gx.Verbose = true
 
-	if err != nil {
-		fmt.Fprintf(gx.Output, "Error: %s\n", err)
-	}
-	if tDir == "" {
-		return
-	}
-	defer os.RemoveAll(tDir)
-
-	bld := BuildContext(gx.Ctx)
-	pkg, err := bld.ImportDir(gx.pkgDir, 0)
 	switch {
-	case err != nil:
-		fmt.Fprintln(gx.Output, "Error: cannot import package:", err)
-	case !pkg.IsCommand() || strings.HasSuffix(bx.View.Filename(), "_test.go"):
+	case testMode:
 		gc.playToolTest(gx, bld, origView)
 	default:
 		gc.playToolRun(gx, bld, origView)
@@ -187,7 +191,7 @@ func (gc *GoCmd) playToolRun(gx *goCmdCtx, bld *build.Context, origView *mg.View
 	}
 
 	args := gx.Args
-	exe := filepath.Join(gx.tDir, "margo.play~~"+nm+".exe")
+	exe := filepath.Join(gx.tDir, nm+".exe")
 	gx.CmdCtx = gx.CmdCtx.Copy(func(bx *mg.CmdCtx) {
 		bx.Name = "go"
 		bx.Args = []string{"build", "-o", exe}
@@ -224,7 +228,7 @@ type goCmdCtx struct {
 	tFn    string
 }
 
-func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn string, origView *mg.View) *goCmdCtx {
+func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn string, origView *mg.View, testMode bool) *goCmdCtx {
 	gx := &goCmdCtx{
 		pkgDir: bx.View.Dir(),
 		tDir:   tDir,
@@ -232,7 +236,7 @@ func newGoCmdCtx(gc *GoCmd, bx *mg.CmdCtx, label, cancelID string, tDir, tFn str
 	}
 
 	output := bx.Output
-	if gc.Humanize && len(bx.Args) > 0 && bx.Args[0] == "test" {
+	if gc.Humanize && testMode {
 		output = &humanizeWriter{output}
 	}
 	if gx.tFn != "" {
