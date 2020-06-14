@@ -325,14 +325,20 @@ func humanizeMetric(met string) string {
 	for j < len(met) && !isWhiteSpace(met[j]) {
 		j++
 	}
+	k := len(met)
+	for k > j && isWhiteSpace(met[k-1]) {
+		k--
+	}
 	pfx := met[:i]
 	val := met[i:j]
-	sfx := met[j:]
+	unit := met[j:k]
+	sfx := met[k:]
+
 	num, err := strconv.ParseInt(val, 10, 64)
 	if err != nil {
 		return met
 	}
-	switch strings.TrimSpace(sfx) {
+	switch strings.TrimSpace(unit) {
 	case "ns/op":
 		s := time.Duration(num).String()
 		i := 0
@@ -344,11 +350,11 @@ func humanizeMetric(met string) string {
 				break
 			}
 		}
-		return pfx + s[:i] + " " + s[i:] + "/op"
+		return pfx + s[:i] + " " + s[i:] + "/op" + sfx
 	case "B/op":
-		return pfx + humanize.IBytes(uint64(num)) + "/op"
+		return pfx + humanize.IBytes(uint64(num)) + "/op" + sfx
 	default:
-		return pfx + humanize.Comma(num) + sfx
+		return pfx + humanize.Comma(num) + unit + sfx
 	}
 }
 
