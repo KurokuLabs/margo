@@ -20,6 +20,8 @@ import (
 type TypeCheck struct {
 	mg.ReducerType
 
+	NoIssues bool
+
 	q *mgutil.ChanQ
 }
 
@@ -98,6 +100,14 @@ func (tc *TypeCheck) check(mx *mg.Ctx) {
 		isu.Label = "Go/TypeCheck"
 		isu.Tag = mg.Error
 		issues[i] = isu
+	}
+
+	tc.issues(mx, issues)
+}
+
+func (tc *TypeCheck) issues(mx *mg.Ctx, issues []mg.Issue) {
+	if tc.NoIssues {
+		return
 	}
 
 	type K struct{}
